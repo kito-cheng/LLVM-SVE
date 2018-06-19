@@ -35,6 +35,7 @@ template <typename T> class SmallVectorImpl;
 class SMDiagnostic;
 class StringRef;
 class Twine;
+class CustomHandlerBase;
 
 namespace yaml {
 
@@ -205,6 +206,9 @@ public:
   void setDiagnosticHandler(DiagnosticHandlerTy DiagHandler,
                             void *DiagContext = nullptr,
                             bool RespectFilters = false);
+
+  const CustomHandlerBase*
+      addCustomDiagnosticHandler(std::unique_ptr<CustomHandlerBase> Handler);
 
   /// getDiagnosticHandler - Return the diagnostic handler set by
   /// setDiagnosticHandler.

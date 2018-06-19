@@ -38,6 +38,11 @@ bool GEPOperator::accumulateConstantOffset(const DataLayout &DL,
              DL.getPointerSizeInBits(getPointerAddressSpace()) &&
          "The offset must have exactly as many bits as our pointer.");
 
+  // This contains a hidden multiplication by a runtime constant.
+  if (auto *PtrTy = dyn_cast<VectorType>(getSourceElementType()))
+    if (PtrTy->isScalable())
+      return false;
+
   for (gep_type_iterator GTI = gep_type_begin(this), GTE = gep_type_end(this);
        GTI != GTE; ++GTI) {
     ConstantInt *OpC = dyn_cast<ConstantInt>(GTI.getOperand());

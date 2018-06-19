@@ -473,11 +473,7 @@ void DwarfUnit::addBlockByrefAddress(const DbgVariable &DV, DIE &Die,
   if (Location.isIndirect())
     DwarfExpr.setMemoryLocationKind();
 
-  SmallVector<uint64_t, 9> Ops;
-  if (Location.isIndirect() && Location.getOffset()) {
-    Ops.push_back(dwarf::DW_OP_plus_uconst);
-    Ops.push_back(Location.getOffset());
-  }
+  SmallVector<uint64_t, 6> Ops;
   // If we started with a pointer to the __Block_byref... struct, then
   // the first thing we need to do is dereference the pointer (DW_OP_deref).
   if (isPointer)
@@ -814,8 +810,9 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, const DIBasicType *BTy) {
   if (BTy->getTag() == dwarf::DW_TAG_unspecified_type)
     return;
 
-  addUInt(Buffer, dwarf::DW_AT_encoding, dwarf::DW_FORM_data1,
-          BTy->getEncoding());
+  if (BTy->getTag() != dwarf::DW_TAG_string_type)
+    addUInt(Buffer, dwarf::DW_AT_encoding, dwarf::DW_FORM_data1,
+            BTy->getEncoding());
 
   uint64_t Size = BTy->getSizeInBits() >> 3;
   addUInt(Buffer, dwarf::DW_AT_byte_size, None, Size);
@@ -1108,7 +1105,9 @@ DIE *DwarfUnit::getOrCreateModule(const DIModule *M) {
     addString(MDie, dwarf::DW_AT_LLVM_include_path, M->getIncludePath());
   if (!M->getISysRoot().empty())
     addString(MDie, dwarf::DW_AT_LLVM_isysroot, M->getISysRoot());
-  
+  if (M->getLine() && !M->getScope()->getFilename().empty())
+    addSourceLine(MDie, M->getLine(), M->getScope()->getFilename(),
+                  M->getScope()->getDirectory());
   return &MDie;
 }
 
@@ -1294,6 +1293,12 @@ void DwarfUnit::applySubprogramAttributes(const DISubprogram *SP, DIE &SPDie,
 
   if (SP->isMainSubprogram())
     addFlag(SPDie, dwarf::DW_AT_main_subprogram);
+  if (SP->isPure())
+    addFlag(SPDie, dwarf::DW_AT_pure);
+  if (SP->isElemental())
+    addFlag(SPDie, dwarf::DW_AT_elemental);
+  if (SP->isRecursive())
+    addFlag(SPDie, dwarf::DW_AT_recursive);
 }
 
 void DwarfUnit::constructSubrangeDIE(DIE &Buffer, const DISubrange *SR,
@@ -1312,7 +1317,21 @@ void DwarfUnit::constructSubrangeDIE(DIE &Buffer, const DISubrange *SR,
   if (DefaultLowerBound == -1 || LowerBound != DefaultLowerBound)
     addUInt(DW_Subrange, dwarf::DW_AT_lower_bound, None, LowerBound);
 
-  if (Count != -1)
+  if (auto *Expr = SR->getCountExpression()) {
+    DIELoc *Loc = new (DIEValueAllocator) DIELoc;
+    DIEDwarfExpression DExpr(*Asm, *this, *Loc);
+    DExpr.addExpression(Expr);
+    DExpr.finalize();
+    addBlock(DW_Subrange, dwarf::DW_AT_count, Loc);
+  } else if (auto *CV = SR->getCountNode()) {
+    // I think we can assert() here that the DIE of the count variable has
+    // already been instantiated, since 'finishVariableDefinition' that
+    // creates the types for a variable is always called _after_ the DIEs
+    // for variables are created.
+    auto *CountNodeDIE = getDIE(CV);
+    assert(CountNodeDIE && "DIE for count is not yet instantiated");
+    addDIEEntry(DW_Subrange, dwarf::DW_AT_count, *CountNodeDIE);
+  } else if (Count != -1)
     // FIXME: An unbounded array should reference the expression that defines
     // the array.
     addUInt(DW_Subrange, dwarf::DW_AT_count, None, Count);

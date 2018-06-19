@@ -1,4 +1,5 @@
 ; RUN: llvm-mc -triple arm64-apple-darwin -mattr=neon -output-asm-variant=1 -show-encoding < %s | FileCheck %s
+; RUN: llvm-mc -triple arm64-apple-darwin -mattr=neon,+sve -output-asm-variant=1 -show-encoding < %s | FileCheck %s
 
 _ld1st1_multiple:
   ld1.8b {v0}, [x1]

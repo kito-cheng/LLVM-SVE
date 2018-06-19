@@ -341,43 +341,44 @@ static const Module *getModuleFromVal(const Value *V) {
 
 static void PrintCallingConv(unsigned cc, raw_ostream &Out) {
   switch (cc) {
-  default:                         Out << "cc" << cc; break;
-  case CallingConv::Fast:          Out << "fastcc"; break;
-  case CallingConv::Cold:          Out << "coldcc"; break;
-  case CallingConv::WebKit_JS:     Out << "webkit_jscc"; break;
-  case CallingConv::AnyReg:        Out << "anyregcc"; break;
-  case CallingConv::PreserveMost:  Out << "preserve_mostcc"; break;
-  case CallingConv::PreserveAll:   Out << "preserve_allcc"; break;
-  case CallingConv::CXX_FAST_TLS:  Out << "cxx_fast_tlscc"; break;
-  case CallingConv::GHC:           Out << "ghccc"; break;
-  case CallingConv::X86_StdCall:   Out << "x86_stdcallcc"; break;
-  case CallingConv::X86_FastCall:  Out << "x86_fastcallcc"; break;
-  case CallingConv::X86_ThisCall:  Out << "x86_thiscallcc"; break;
-  case CallingConv::X86_RegCall:   Out << "x86_regcallcc"; break;
-  case CallingConv::X86_VectorCall:Out << "x86_vectorcallcc"; break;
-  case CallingConv::Intel_OCL_BI:  Out << "intel_ocl_bicc"; break;
-  case CallingConv::ARM_APCS:      Out << "arm_apcscc"; break;
-  case CallingConv::ARM_AAPCS:     Out << "arm_aapcscc"; break;
-  case CallingConv::ARM_AAPCS_VFP: Out << "arm_aapcs_vfpcc"; break;
-  case CallingConv::MSP430_INTR:   Out << "msp430_intrcc"; break;
-  case CallingConv::AVR_INTR:      Out << "avr_intrcc "; break;
-  case CallingConv::AVR_SIGNAL:    Out << "avr_signalcc "; break;
-  case CallingConv::PTX_Kernel:    Out << "ptx_kernel"; break;
-  case CallingConv::PTX_Device:    Out << "ptx_device"; break;
-  case CallingConv::X86_64_SysV:   Out << "x86_64_sysvcc"; break;
-  case CallingConv::Win64:         Out << "win64cc"; break;
-  case CallingConv::SPIR_FUNC:     Out << "spir_func"; break;
-  case CallingConv::SPIR_KERNEL:   Out << "spir_kernel"; break;
-  case CallingConv::Swift:         Out << "swiftcc"; break;
-  case CallingConv::X86_INTR:      Out << "x86_intrcc"; break;
-  case CallingConv::HHVM:          Out << "hhvmcc"; break;
-  case CallingConv::HHVM_C:        Out << "hhvm_ccc"; break;
-  case CallingConv::AMDGPU_VS:     Out << "amdgpu_vs"; break;
-  case CallingConv::AMDGPU_HS:     Out << "amdgpu_hs"; break;
-  case CallingConv::AMDGPU_GS:     Out << "amdgpu_gs"; break;
-  case CallingConv::AMDGPU_PS:     Out << "amdgpu_ps"; break;
-  case CallingConv::AMDGPU_CS:     Out << "amdgpu_cs"; break;
-  case CallingConv::AMDGPU_KERNEL: Out << "amdgpu_kernel"; break;
+  default:                              Out << "cc" << cc; break;
+  case CallingConv::Fast:               Out << "fastcc"; break;
+  case CallingConv::Cold:               Out << "coldcc"; break;
+  case CallingConv::WebKit_JS:          Out << "webkit_jscc"; break;
+  case CallingConv::AnyReg:             Out << "anyregcc"; break;
+  case CallingConv::PreserveMost:       Out << "preserve_mostcc"; break;
+  case CallingConv::PreserveAll:        Out << "preserve_allcc"; break;
+  case CallingConv::CXX_FAST_TLS:       Out << "cxx_fast_tlscc"; break;
+  case CallingConv::GHC:                Out << "ghccc"; break;
+  case CallingConv::X86_StdCall:        Out << "x86_stdcallcc"; break;
+  case CallingConv::X86_FastCall:       Out << "x86_fastcallcc"; break;
+  case CallingConv::X86_ThisCall:       Out << "x86_thiscallcc"; break;
+  case CallingConv::X86_RegCall:        Out << "x86_regcallcc"; break;
+  case CallingConv::X86_VectorCall:     Out << "x86_vectorcallcc"; break;
+  case CallingConv::Intel_OCL_BI:       Out << "intel_ocl_bicc"; break;
+  case CallingConv::ARM_APCS:           Out << "arm_apcscc"; break;
+  case CallingConv::ARM_AAPCS:          Out << "arm_aapcscc"; break;
+  case CallingConv::ARM_AAPCS_VFP:      Out << "arm_aapcs_vfpcc"; break;
+  case CallingConv::AArch64_VectorCall: Out << "aarch64_vector_pcs"; break;
+  case CallingConv::MSP430_INTR:        Out << "msp430_intrcc"; break;
+  case CallingConv::AVR_INTR:           Out << "avr_intrcc "; break;
+  case CallingConv::AVR_SIGNAL:         Out << "avr_signalcc "; break;
+  case CallingConv::PTX_Kernel:         Out << "ptx_kernel"; break;
+  case CallingConv::PTX_Device:         Out << "ptx_device"; break;
+  case CallingConv::X86_64_SysV:        Out << "x86_64_sysvcc"; break;
+  case CallingConv::Win64:              Out << "win64cc"; break;
+  case CallingConv::SPIR_FUNC:          Out << "spir_func"; break;
+  case CallingConv::SPIR_KERNEL:        Out << "spir_kernel"; break;
+  case CallingConv::Swift:              Out << "swiftcc"; break;
+  case CallingConv::X86_INTR:           Out << "x86_intrcc"; break;
+  case CallingConv::HHVM:               Out << "hhvmcc"; break;
+  case CallingConv::HHVM_C:             Out << "hhvm_ccc"; break;
+  case CallingConv::AMDGPU_VS:          Out << "amdgpu_vs"; break;
+  case CallingConv::AMDGPU_HS:          Out << "amdgpu_hs"; break;
+  case CallingConv::AMDGPU_GS:          Out << "amdgpu_gs"; break;
+  case CallingConv::AMDGPU_PS:          Out << "amdgpu_ps"; break;
+  case CallingConv::AMDGPU_CS:          Out << "amdgpu_cs"; break;
+  case CallingConv::AMDGPU_KERNEL:      Out << "amdgpu_kernel"; break;
   }
 }
 
@@ -579,7 +580,12 @@ void TypePrinting::print(Type *Ty, raw_ostream &OS) {
   }
   case Type::VectorTyID: {
     VectorType *PTy = cast<VectorType>(Ty);
-    OS << "<" << PTy->getNumElements() << " x ";
+    OS << '<';
+
+    if (PTy->isScalable())
+      OS << "n x ";
+
+    OS << PTy->getNumElements() << " x ";
     print(PTy->getElementType(), OS);
     OS << '>';
     return;
@@ -1046,6 +1052,10 @@ void SlotTracker::CreateFunctionSlot(const Value *V) {
 void SlotTracker::CreateMetadataSlot(const MDNode *N) {
   assert(N && "Can't insert a null Value into SlotTracker!");
 
+  // Don't make slots for DIExpressions. We just print them inline everywhere.
+  if (isa<DIExpression>(N))
+    return;
+
   unsigned DestSlot = mdnNext;
   if (!mdnMap.insert(std::make_pair(N, DestSlot)).second)
     return;
@@ -1348,8 +1358,18 @@ static void WriteConstantInternal(raw_ostream &Out, const Constant *CV,
     return;
   }
 
+  if (isa<StepVector>(CV)) {
+    Out << "stepvector";
+    return;
+  }
+
   if (isa<UndefValue>(CV)) {
     Out << "undef";
+    return;
+  }
+
+  if (isa<VScale>(CV)) {
+    Out << "vscale";
     return;
   }
 
@@ -1611,10 +1631,14 @@ static void writeDILocation(raw_ostream &Out, const DILocation *DL,
 }
 
 static void writeDISubrange(raw_ostream &Out, const DISubrange *N,
-                            TypePrinting *, SlotTracker *, const Module *) {
+                            TypePrinting *TypePrinter, SlotTracker *Machine,
+                            const Module *Context) {
   Out << "!DISubrange(";
-  MDFieldPrinter Printer(Out);
-  Printer.printInt("count", N->getCount(), /* ShouldSkipZero */ false);
+  MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
+  if (auto *CE = N->getRawCountNode())
+    Printer.printMetadata("count", CE, /*ShouldSkipNull */ false);
+  else
+    Printer.printInt("count", N->getCount(), /* ShouldSkipZero */ false);
   Printer.printInt("lowerBound", N->getLowerBound());
   Out << ")";
 }
@@ -1842,6 +1866,8 @@ static void writeDIModule(raw_ostream &Out, const DIModule *N,
   Printer.printString("configMacros", N->getConfigurationMacros());
   Printer.printString("includePath", N->getIncludePath());
   Printer.printString("isysroot", N->getISysRoot());
+  Printer.printMetadata("file", N->getRawFile());
+  Printer.printInt("line", N->getLine());
   Out << ")";
 }
 
@@ -2073,6 +2099,13 @@ static void WriteAsOperandInternal(raw_ostream &Out, const Metadata *MD,
                                    TypePrinting *TypePrinter,
                                    SlotTracker *Machine, const Module *Context,
                                    bool FromValue) {
+  // Write DIExpressions inline when used as a value. Improves readability of
+  // debug info intrinsics.
+  if (const DIExpression *Expr = dyn_cast<DIExpression>(MD)) {
+    writeDIExpression(Out, Expr, TypePrinter, Machine, Context);
+    return;
+  }
+
   if (const MDNode *N = dyn_cast<MDNode>(MD)) {
     std::unique_ptr<SlotTracker> MachineStorage;
     if (!Machine) {
@@ -2424,7 +2457,16 @@ void AssemblyWriter::printNamedMDNode(const NamedMDNode *NMD) {
   for (unsigned i = 0, e = NMD->getNumOperands(); i != e; ++i) {
     if (i)
       Out << ", ";
-    int Slot = Machine.getMetadataSlot(NMD->getOperand(i));
+
+    // Write DIExpressions inline.
+    // FIXME: Ban DIExpressions in NamedMDNodes, they will serve no purpose.
+    MDNode *Op = NMD->getOperand(i);
+    if (auto *Expr = dyn_cast<DIExpression>(Op)) {
+      writeDIExpression(Out, Expr, nullptr, nullptr, nullptr);
+      continue;
+    }
+
+    int Slot = Machine.getMetadataSlot(Op);
     if (Slot == -1)
       Out << "<badref>";
     else

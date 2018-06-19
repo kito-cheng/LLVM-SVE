@@ -959,7 +959,9 @@ Instruction *InstCombiner::foldGEPICmp(GEPOperator *GEPLHS, Value *RHS,
           }
 
       // If all indices are the same, just compare the base pointers.
-      if (IndicesTheSame)
+      if (IndicesTheSame &&
+            (GEPLHS->getOperand(0)->getType()->isVectorTy() ==
+             GEPLHS->getType()->isVectorTy()))
         return new ICmpInst(Cond, GEPLHS->getOperand(0), GEPRHS->getOperand(0));
 
       // If we're comparing GEPs with two base pointers that only differ in type
@@ -5063,12 +5065,21 @@ Instruction *InstCombiner::visitFCmpInst(FCmpInst &I) {
         }
         break;
       case Instruction::Call: {
-        if (!RHSC->isNullValue())
-          break;
-
         CallInst *CI = cast<CallInst>(LHSI);
         Intrinsic::ID IID = getIntrinsicForCallSite(CI, &TLI);
-        if (IID != Intrinsic::fabs)
+
+        if (IID == Intrinsic::sqrt) {
+          FastMathFlags FMF = I.getFastMathFlags();
+          ConstantFP *RHSF = dyn_cast<ConstantFP>(RHSC);
+
+          // fcmp sqrt(x),C --> fcmp x,C*C ; When signs and NaNs are preserved.
+          if (RHSF && !RHSF->isNegative() && FMF.noNaNs())
+            return new FCmpInst(I.getPredicate(), CI->getArgOperand(0),
+                                ConstantExpr::getFMul(RHSC, RHSC));
+          break;
+        }
+
+        if ((IID != Intrinsic::fabs) || !RHSC->isNullValue())
           break;
 
         // Various optimization for fabs compared with zero.

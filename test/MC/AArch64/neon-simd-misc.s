@@ -1,4 +1,5 @@
 // RUN: llvm-mc -triple=arm64 -mattr=+neon,+fullfp16 -show-encoding < %s | FileCheck %s
+// RUN: llvm-mc -triple=arm64 -mattr=+neon,+fullfp16,+sve -show-encoding < %s | FileCheck %s
 
 // Check that the assembler can handle the documented syntax for AArch64
 

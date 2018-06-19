@@ -351,6 +351,7 @@ public:
   };
 
 private:
+  std::string Comment;
   OpType Operation;
   MCSymbol *Label;
   unsigned Register;
@@ -360,14 +361,15 @@ private:
   };
   std::vector<char> Values;
 
-  MCCFIInstruction(OpType Op, MCSymbol *L, unsigned R, int O, StringRef V)
-      : Operation(Op), Label(L), Register(R), Offset(O),
+  MCCFIInstruction(OpType Op, MCSymbol *L, unsigned R, int O, StringRef V,
+                   StringRef Comment = "")
+      : Comment(Comment), Operation(Op), Label(L), Register(R), Offset(O),
         Values(V.begin(), V.end()) {
     assert(Op != OpRegister);
   }
 
   MCCFIInstruction(OpType Op, MCSymbol *L, unsigned R1, unsigned R2)
-      : Operation(Op), Label(L), Register(R1), Register2(R2) {
+      : Comment(""), Operation(Op), Label(L), Register(R1), Register2(R2) {
     assert(Op == OpRegister);
   }
 
@@ -457,14 +459,32 @@ public:
 
   /// \brief .cfi_escape Allows the user to add arbitrary bytes to the unwind
   /// info.
-  static MCCFIInstruction createEscape(MCSymbol *L, StringRef Vals) {
-    return MCCFIInstruction(OpEscape, L, 0, 0, Vals);
+  static MCCFIInstruction createEscape(MCSymbol *L, StringRef Vals,
+                                                    StringRef Comment="") {
+    return MCCFIInstruction(OpEscape, L, 0, 0, Vals, Comment);
   }
 
   /// \brief A special wrapper for .cfi_escape that indicates GNU_ARGS_SIZE
   static MCCFIInstruction createGnuArgsSize(MCSymbol *L, int Size) {
     return MCCFIInstruction(OpGnuArgsSize, L, 0, Size, "");
   }
+
+  /// \brief A special wrapper for .cfi_escape that describes the location
+  /// where register 'Reg' from the previous frame is saved at, calculated as:
+  /// SaveLoc(Reg) = Basereg + Offset + Scalereg * Offset2.
+  static MCCFIInstruction createScaledOffset(MCSymbol *L, unsigned Reg,
+                                             unsigned Basereg, int Offset,
+                                             unsigned Scalereg, int Offset2,
+                                             StringRef Comment="");
+
+
+  /// \brief A special wrapper for .cfi_escape that describes the CFA
+  /// as an expression using a 'scale register'. The CFA is defined as:
+  /// CFA = Basereg + Offset + Scalereg * Offset2.
+  static MCCFIInstruction createScaledDefCfaOffset(MCSymbol *L,
+                                             unsigned Basereg, int Offset,
+                                             unsigned Scalereg, int Offset2,
+                                             StringRef Comment="");
 
   OpType getOperation() const { return Operation; }
   MCSymbol *getLabel() const { return Label; }
@@ -492,6 +512,10 @@ public:
   StringRef getValues() const {
     assert(Operation == OpEscape);
     return StringRef(&Values[0], Values.size());
+  }
+
+  StringRef getComment() const {
+    return Comment;
   }
 };
 

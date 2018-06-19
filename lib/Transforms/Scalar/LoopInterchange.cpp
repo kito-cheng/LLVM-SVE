@@ -14,11 +14,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/AssumptionCache.h"
+#include "llvm/Analysis/BasicAliasAnalysis.h"
 #include "llvm/Analysis/BlockFrequencyInfo.h"
 #include "llvm/Analysis/CodeMetrics.h"
 #include "llvm/Analysis/DependenceAnalysis.h"
+#include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/LoopIterator.h"
 #include "llvm/Analysis/LoopPass.h"
@@ -48,6 +51,8 @@ using namespace llvm;
 static cl::opt<int> LoopInterchangeCostThreshold(
     "loop-interchange-threshold", cl::init(0), cl::Hidden,
     cl::desc("Interchange if you gain more than this number"));
+
+STATISTIC(NumLoopsInterchanged, "Number of loops interchanged");
 
 namespace {
 
@@ -446,6 +451,8 @@ struct LoopInterchange : public FunctionPass {
     AU.addRequiredID(LoopSimplifyID);
     AU.addRequiredID(LCSSAID);
     AU.addRequired<OptimizationRemarkEmitterWrapperPass>();
+    AU.addPreserved<BasicAAWrapperPass>();
+    AU.addPreserved<GlobalsAAWrapperPass>();
   }
 
   bool runOnFunction(Function &F) override {
@@ -608,6 +615,7 @@ struct LoopInterchange : public FunctionPass {
                                  LoopNestExit, LIL.hasInnerLoopReduction());
     LIT.transform();
     DEBUG(dbgs() << "Loops interchanged\n");
+    ++NumLoopsInterchanged;
     return true;
   }
 };
@@ -617,7 +625,7 @@ bool LoopInterchangeLegality::areAllUsesReductions(Instruction *Ins, Loop *L) {
   return none_of(Ins->users(), [=](User *U) -> bool {
     auto *UserIns = dyn_cast<PHINode>(U);
     RecurrenceDescriptor RD;
-    return !UserIns || !RecurrenceDescriptor::isReductionPHI(UserIns, L, RD);
+    return !UserIns || !RecurrenceDescriptor::isReductionPHI(UserIns, L, SE, RD);
   });
 }
 
@@ -719,7 +727,7 @@ bool LoopInterchangeLegality::findInductionAndReductions(
     PHINode *PHI = cast<PHINode>(I);
     if (InductionDescriptor::isInductionPHI(PHI, L, SE, ID))
       Inductions.push_back(PHI);
-    else if (RecurrenceDescriptor::isReductionPHI(PHI, L, RD))
+    else if (RecurrenceDescriptor::isReductionPHI(PHI, L, SE, RD))
       Reductions.push_back(PHI);
     else {
       DEBUG(
@@ -1385,13 +1393,15 @@ char LoopInterchange::ID = 0;
 INITIALIZE_PASS_BEGIN(LoopInterchange, "loop-interchange",
                       "Interchanges loops for cache reuse", false, false)
 INITIALIZE_PASS_DEPENDENCY(AAResultsWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(BasicAAWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(DependenceAnalysisWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(ScalarEvolutionWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(LoopSimplify)
+INITIALIZE_PASS_DEPENDENCY(GlobalsAAWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(LCSSAWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(LoopInfoWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(LoopSimplify)
 INITIALIZE_PASS_DEPENDENCY(OptimizationRemarkEmitterWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(ScalarEvolutionWrapperPass)
 
 INITIALIZE_PASS_END(LoopInterchange, "loop-interchange",
                     "Interchanges loops for cache reuse", false, false)

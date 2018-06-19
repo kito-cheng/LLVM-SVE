@@ -106,6 +106,7 @@ Pass *createFunctionImportPass();
 ///
 /// The -inline-threshold command line option takes precedence over the
 /// threshold given here.
+Pass *createPreInlinerTransformsPass();
 Pass *createFunctionInliningPass();
 Pass *createFunctionInliningPass(int Threshold);
 Pass *createFunctionInliningPass(unsigned OptLevel, unsigned SizeOptLevel,

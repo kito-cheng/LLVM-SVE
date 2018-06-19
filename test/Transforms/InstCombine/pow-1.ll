@@ -190,5 +190,73 @@ define double @test_simplify19(double %x) {
 ; CHECK-NO-EXP10: call double @pow
 }
 
+; Check pow(x, 3.0) -> x*x*x.
+
+define float @test_simplify20(float %x) {
+; CHECK-LABEL: @test_simplify20(
+  %retval = call float @powf(float %x, float 3.0)
+; CHECK-NEXT: [[POW2:%[a-z0-9]+]] = fmul float %x, %x
+; CHECK-NEXT: [[POW3:%[a-z0-9]+]] = fmul float [[POW2]], %x
+  ret float %retval
+; CHECK-NEXT: ret float [[POW3]]
+}
+
+define double @test_simplify21(double %x) {
+; CHECK-LABEL: @test_simplify21(
+  %retval = call double @pow(double %x, double 3.0)
+; CHECK-NEXT: [[POW2:%[a-z0-9]+]] = fmul double %x, %x
+; CHECK-NEXT: [[POW3:%[a-z0-9]+]] = fmul double [[POW2]], %x
+  ret double %retval
+; CHECK-NEXT: ret double [[POW3]]
+}
+
+; Check pow(x, 4.0) -> x*x*x*x.
+
+define float @test_simplify22(float %x) {
+; CHECK-LABEL: @test_simplify22(
+  %retval = call float @powf(float %x, float 4.0)
+  ; CHECK-NEXT: [[POW2:%[a-z0-9]+]] = fmul float %x, %x
+  ; CHECK-NEXT: [[POW3:%[a-z0-9]+]] = fmul float [[POW2]], %x
+  ; CHECK-NEXT: [[POW4:%[a-z0-9]+]] = fmul float [[POW3]], %x
+  ret float %retval
+; CHECK-NEXT: ret float [[POW4]]
+}
+
+define double @test_simplify23(double %x) {
+; CHECK-LABEL: @test_simplify23(
+  %retval = call double @pow(double %x, double 4.0)
+  ; CHECK-NEXT: [[POW2:%[a-z0-9]+]] = fmul double %x, %x
+  ; CHECK-NEXT: [[POW3:%[a-z0-9]+]] = fmul double [[POW2]], %x
+  ; CHECK-NEXT: [[POW4:%[a-z0-9]+]] = fmul double [[POW3]], %x
+  ret double %retval
+; CHECK-NEXT: ret double [[POW4]]
+}
+
+; Check pow(x, -0.5) -> (x == -infinity ? +0.0 : 1/fabs(sqrt(x))).
+
+define float @test_simplify24(float %x) {
+; CHECK-LABEL: @test_simplify24(
+  %retval = call float @powf(float %x, float -0.5)
+; CHECK-NEXT: [[SQRT:%[a-z0-9]+]] = call float @sqrtf(float %x)
+; CHECK-NEXT: [[FABS:%[a-z0-9]+]] = call float @llvm.fabs.f32(float [[SQRT]])
+; CHECK-NEXT: [[RSQRT:%[a-z0-9]+]] = fdiv float 1.000000e+00, [[FABS]]
+; CHECK-NEXT: [[FCMP:%[a-z0-9]+]] = fcmp oeq float %x, 0xFFF0000000000000
+; CHECK-NEXT: [[SELECT:%[a-z0-9]+]] = select i1 [[FCMP]], float 0.000000e+00, float [[RSQRT]]
+  ret float %retval
+; CHECK-NEXT: ret float [[SELECT]]
+}
+
+define double @test_simplify25(double %x) {
+; CHECK-LABEL: @test_simplify25(
+  %retval = call double @pow(double %x, double -0.5)
+; CHECK-NEXT: [[SQRT:%[a-z0-9]+]] = call double @sqrt(double %x)
+; CHECK-NEXT: [[FABS:%[a-z0-9]+]] = call double @llvm.fabs.f64(double [[SQRT]])
+; CHECK-NEXT: [[RSQRT:%[a-z0-9]+]] = fdiv double 1.000000e+00, [[FABS]]
+; CHECK-NEXT: [[FCMP:%[a-z0-9]+]] = fcmp oeq double %x, 0xFFF0000000000000
+; CHECK-NEXT: [[SELECT:%[a-z0-9]+]] = select i1 [[FCMP]], double 0.000000e+00, double [[RSQRT]]
+  ret double %retval
+; CHECK-NEXT: ret double [[SELECT]]
+}
+
 ; CHECK: attributes [[NUW_RO]] = { nounwind readonly }
 

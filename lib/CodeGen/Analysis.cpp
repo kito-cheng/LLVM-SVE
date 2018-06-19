@@ -84,26 +84,55 @@ unsigned llvm::ComputeLinearIndex(Type *Ty,
 ///
 void llvm::ComputeValueVTs(const TargetLowering &TLI, const DataLayout &DL,
                            Type *Ty, SmallVectorImpl<EVT> &ValueVTs,
-                           SmallVectorImpl<uint64_t> *Offsets,
-                           uint64_t StartingOffset) {
+                           SmallVectorImpl<FieldOffsets> *Offsets,
+                           FieldOffsets StartingOffset) {
   // Given a struct type, recursively traverse the elements.
   if (StructType *STy = dyn_cast<StructType>(Ty)) {
+    bool IsSizeLess = false;
     const StructLayout *SL = DL.getStructLayout(STy);
     for (StructType::element_iterator EB = STy->element_begin(),
                                       EI = EB,
                                       EE = STy->element_end();
-         EI != EE; ++EI)
-      ComputeValueVTs(TLI, DL, *EI, ValueVTs, Offsets,
-                      StartingOffset + SL->getElementOffset(EI - EB));
+         EI != EE; ++EI) {
+      FieldOffsets ElementOffset = StartingOffset;
+      auto *VTy = dyn_cast<VectorType>(*EI);
+
+      if (VTy && VTy->isScalable()) {
+        ElementOffset.ScaledBytes += SL->getElementOffset(EI - EB);
+        IsSizeLess = true;
+      } else {
+        ElementOffset.UnscaledBytes += SL->getElementOffset(EI - EB);
+      }
+      ComputeValueVTs(TLI, DL, *EI, ValueVTs, Offsets, ElementOffset);
+    }
+
+    // We don't handle padding in sizeless structs yet if we're actually
+    // trying to store them; if the fields are just being passed around
+    // in registers we're fine.
+    //
+    // getStructLayout will need to return offset as separate values for
+    // previous elements combined size + padding bytes for this to work.
+    //
+    // Maybe we should force sizeless structs to be packed in clang?
+    if (IsSizeLess && Offsets)
+      assert(!(SL->hasPadding()) && "Padding in sizeless struct");
+
     return;
   }
   // Given an array type, recursively traverse the elements.
   if (ArrayType *ATy = dyn_cast<ArrayType>(Ty)) {
     Type *EltTy = ATy->getElementType();
     uint64_t EltSize = DL.getTypeAllocSize(EltTy);
-    for (unsigned i = 0, e = ATy->getNumElements(); i != e; ++i)
-      ComputeValueVTs(TLI, DL, EltTy, ValueVTs, Offsets,
-                      StartingOffset + i * EltSize);
+    for (unsigned i = 0, e = ATy->getNumElements(); i != e; ++i) {
+      FieldOffsets ElementOffset = StartingOffset;
+      auto *VTy = dyn_cast<VectorType>(EltTy);
+
+      // We don't yet handle arrays of scalable types
+      assert(!(VTy && VTy->isScalable()) && "Scalable array type");
+
+      ElementOffset.UnscaledBytes += i * EltSize;
+      ComputeValueVTs(TLI, DL, EltTy, ValueVTs, Offsets, ElementOffset);
+    }
     return;
   }
   // Interpret void as zero return values.

@@ -78,6 +78,8 @@ AArch64RegisterBankInfo::AArch64RegisterBankInfo(const TargetRegisterInfo &TRI)
   // GR64all + its subclasses.
   assert(RBFPR.covers(*TRI.getRegClass(AArch64::QQRegClassID)) &&
          "Subclass not added?");
+  assert(RBFPR.covers(*TRI.getRegClass(AArch64::ZPR2RegClassID)) &&
+         "Subclass not added?");
   assert(RBFPR.covers(*TRI.getRegClass(AArch64::FPR64RegClassID)) &&
          "Subclass not added?");
   assert(RBFPR.getSize() == 512 &&
@@ -217,6 +219,10 @@ const RegisterBank &AArch64RegisterBankInfo::getRegBankFromRegClass(
   case AArch64::QQRegClassID:
   case AArch64::QQQRegClassID:
   case AArch64::QQQQRegClassID:
+  case AArch64::ZPRRegClassID:
+  case AArch64::ZPR2RegClassID:
+  case AArch64::ZPR3RegClassID:
+  case AArch64::ZPR4RegClassID:
     return getRegBank(AArch64::FPRRegBankID);
   case AArch64::GPR32commonRegClassID:
   case AArch64::GPR32RegClassID:

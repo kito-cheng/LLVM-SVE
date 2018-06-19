@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <utility>
+#include <tuple>
 
 namespace llvm {
 
@@ -203,6 +204,45 @@ struct DenseMapInfo<std::pair<T, U>> {
   static bool isEqual(const Pair &LHS, const Pair &RHS) {
     return FirstInfo::isEqual(LHS.first, RHS.first) &&
            SecondInfo::isEqual(LHS.second, RHS.second);
+  }
+};
+
+
+// Provide DenseMapInfo for tree member tuples.
+template<typename T, typename U, typename V>
+struct DenseMapInfo<std::tuple<T, U, V> > {
+  typedef std::tuple<T, U, V> Tuple;
+  typedef DenseMapInfo<T> FirstInfo;
+  typedef DenseMapInfo<U> SecondInfo;
+  typedef DenseMapInfo<V> ThirdInfo;
+
+  static inline Tuple getEmptyKey() {
+    return std::make_tuple(FirstInfo::getEmptyKey(),
+                           SecondInfo::getEmptyKey(),
+                           ThirdInfo::getEmptyKey());
+  }
+  static inline Tuple getTombstoneKey() {
+    return std::make_tuple(FirstInfo::getTombstoneKey(),
+                           SecondInfo::getTombstoneKey(),
+                           ThirdInfo::getTombstoneKey());
+  }
+  static unsigned getHashValue(const Tuple& TupleVal) {
+    uint64_t key = (uint64_t)FirstInfo::getHashValue(std::get<0>(TupleVal)) << 32
+    | (uint64_t)SecondInfo::getHashValue(std::get<1>(TupleVal));
+    // TODO: not sure what to do about the third member,
+    // for the current usage it does not offer anything useful
+    key += ~(key << 32);
+    key ^= (key >> 22);
+    key += ~(key << 13);
+    key ^= (key >> 8);
+    key += (key << 3);
+    key ^= (key >> 15);
+    key += ~(key << 27);
+    key ^= (key >> 31);
+    return (unsigned)key;
+  }
+  static bool isEqual(const Tuple &LHS, const Tuple &RHS) {
+    return LHS == RHS;
   }
 };
 

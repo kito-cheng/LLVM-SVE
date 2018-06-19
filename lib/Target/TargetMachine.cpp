@@ -90,6 +90,16 @@ void TargetMachine::resetTargetOptions(const Function &F) const {
     Options.FPDenormalMode = FPDenormal::PositiveZero;
   else
     Options.FPDenormalMode = DefaultOptions.FPDenormalMode;
+
+  StringRef FPContract = F.getFnAttribute("fp-contract").getValueAsString();
+  if (FPContract == "off")
+    // Preserve any contraction performed by the front-end.  (Strict performs
+    // splitting of the muladd instrinsic in the backend.)
+    Options.AllowFPOpFusion = llvm::FPOpFusion::Standard;
+  else if (FPContract == "on")
+    Options.AllowFPOpFusion = llvm::FPOpFusion::Standard;
+  else if (FPContract == "fast")
+    Options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
 }
 
 /// Returns the code generation relocation model. The choices are static, PIC,

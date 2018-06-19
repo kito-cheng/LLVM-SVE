@@ -1,6 +1,9 @@
 // RUN: not llvm-mc %s -triple=aarch64-none-linux-gnu -filetype asm -o - 2>&1 \
 // RUN:   | FileCheck -check-prefix CHECK-ERROR %s
 
+// RUN: not llvm-mc %s -triple=aarch64-none-linux-gnu -mattr=+sve -filetype asm -o - 2>&1 \
+// RUN:   | FileCheck -check-prefix CHECK-ERROR %s
+
 	.align 2
 	.global diagnostics
 	.type diagnostics,%function

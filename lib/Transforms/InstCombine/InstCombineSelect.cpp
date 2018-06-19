@@ -1492,6 +1492,15 @@ Instruction *InstCombiner::visitSelectInst(SelectInst &SI) {
     return &SI;
   }
 
+  // TODO: m_AllOnes needs to support scalable vectors
+  Value *InvCondVal;
+  if (match(CondVal, m_Xor(m_Value(InvCondVal), m_SplatVector(m_AllOnes())))) {
+    SI.setOperand(0, InvCondVal);
+    SI.setOperand(1, FalseVal);
+    SI.setOperand(2, TrueVal);
+    return &SI;
+  }
+
   if (VectorType *VecTy = dyn_cast<VectorType>(SelType)) {
     unsigned VWidth = VecTy->getNumElements();
     APInt UndefElts(VWidth, 0);

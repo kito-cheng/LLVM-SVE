@@ -1,5 +1,7 @@
 // RUN: llvm-mc -triple=arm64-linux-gnu -show-encoding -o - %s | FileCheck %s
 // RUN: llvm-mc -triple=arm64-linux-gnu -show-encoding -filetype=obj -o - %s | llvm-objdump -r - | FileCheck --check-prefix=CHECK-OBJ %s
+// RUN: llvm-mc -triple=arm64-linux-gnu -mattr=+sve -show-encoding -o - %s | FileCheck %s
+// RUN: llvm-mc -triple=arm64-linux-gnu -mattr=+sve -show-encoding -filetype=obj -o - %s | llvm-objdump -r - | FileCheck --check-prefix=CHECK-OBJ %s
 
         movz x2, #:abs_g0:sym
         movk w3, #:abs_g0_nc:sym

@@ -1,4 +1,5 @@
 ; RUN: opt < %s  -loop-vectorize -force-vector-interleave=1 -force-vector-width=4 -dce -instcombine -S | FileCheck %s
+; RUN: opt < %s   -disable-loop-vectorization -sve-loop-vectorize -force-vector-interleave=1 -mattr=+sve -mtriple=aarch64 -force-vector-width=4 -dce -instcombine -S | FileCheck %s --check-prefix=CHECK-SVE
 
 target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80:128:128-n8:16:32:64-S128"
 
@@ -492,6 +493,106 @@ for.body:
 exit:
   %inc.2 = add nsw i32 %inc511.1.inc4.1, 2
   ret i32 %inc.2
+}
+
+; int sum = 0;
+; for(i=0..N) {
+;   sum += src[i];
+;   dst[42] = sum;
+; }
+; CHECK-SVE-LABEL: @reduc_store
+define void @reduc_store(i32* %dst, i32* readonly %src) {
+entry:
+  %arrayidx = getelementptr inbounds i32, i32* %dst, i64 42
+  store i32 0, i32* %arrayidx, align 4
+  br label %for.body
+
+; CHECK-SVE: vector.body:
+; CHECK-SVE-NOT: store i32 %{{[0-9]+}}, i32* %arrayidx
+for.body:
+  %0 = phi i32 [ 0, %entry ], [ %add, %for.body ]
+  %indvars.iv = phi i64 [ 0, %entry ], [ %indvars.iv.next, %for.body ]
+  %arrayidx1 = getelementptr inbounds i32, i32* %src, i64 %indvars.iv
+  %1 = load i32, i32* %arrayidx1, align 4
+  %add = add nsw i32 %0, %1
+  store i32 %add, i32* %arrayidx, align 4
+  %indvars.iv.next = add nuw nsw i64 %indvars.iv, 1
+  %exitcond = icmp eq i64 %indvars.iv.next, 1000
+  br i1 %exitcond, label %for.cond.cleanup, label %for.body
+
+; CHECK-SVE: middle.block:
+; CHECK-SVE: store i32 %{{[0-9]+}}, i32* %arrayidx
+; CHECK-SVE: ret void
+for.cond.cleanup:
+  ret void
+}
+; int sum = 0;
+; for(int i=0; i < 1000; i++) {
+;   sum += src[i];
+;   dst[42] = sum;
+; }
+; dst[43] = sum;
+; CHECK-SVE-LABEL: @reduc_store_inoutside
+define void @reduc_store_inoutside(i32* %dst, i32* readonly %src) {
+entry:
+  %arrayidx1 = getelementptr inbounds i32, i32* %dst, i64 42
+  br label %for.body
+
+for.cond.cleanup:
+  %add.lcssa = phi i32 [ %add, %for.body ]
+  %arrayidx2 = getelementptr inbounds i32, i32* %dst, i64 43
+  store i32 %add.lcssa, i32* %arrayidx2, align 4
+  ret void
+
+; CHECK-SVE: vector.body:
+; CHECK-SVE-NOT: store i32 %{{[0-9]+}}, i32* %arrayidx
+for.body:
+  %indvars.iv = phi i64 [ 0, %entry ], [ %indvars.iv.next, %for.body ]
+  %sum.010 = phi i32 [ 0, %entry ], [ %add, %for.body ]
+  %arrayidx = getelementptr inbounds i32, i32* %src, i64 %indvars.iv
+  %0 = load i32, i32* %arrayidx, align 4
+  %add = add nsw i32 %0, %sum.010
+  store i32 %add, i32* %arrayidx1, align 4
+  %indvars.iv.next = add nuw nsw i64 %indvars.iv, 1
+  %exitcond = icmp eq i64 %indvars.iv.next, 1000
+  br i1 %exitcond, label %for.cond.cleanup, label %for.body
+; CHECK-SVE: middle.block:
+; CHECK-SVE: store i32 %[[RDX:[0-9]+]], i32* %arrayidx
+
+; CHECK-SVE: for.cond.cleanup:
+; CHECK-SVE: %[[PHI:[a-zA-Z.0-9]+]] = phi i32 {{.*}} %[[RDX]]
+; CHECK-SVE: %[[ADDR:[a-zA-Z.0-9]+]] = getelementptr inbounds i32, i32* %dst, i64 43
+; CHECK-SVE: store i32 %[[PHI]], i32* %[[ADDR]]
+; CHECK-SVE: ret void
+}
+
+; It's not safe to vectorise this loop when using predication because the
+; resulting uniform store cannot be generated.
+; TODO: In practice we only need to restrict the type of vectorisation used
+;       but today we just disable all vectorisation.
+; CHECK-SVE-LABEL: @reduc_store_intermediary
+define i32 @reduc_store_intermediary(i32* %dst, i8* readonly %src) {
+entry:
+  %arrayidx = getelementptr inbounds i32, i32* %dst, i64 42
+  store i32 0, i32* %arrayidx, align 4
+  br label %for.body
+
+; CHECK-SVE-NOT: vector.body:
+for.body:
+  %0 = phi i32 [ 0, %entry ], [ %add, %for.body ]
+  %indvars.iv = phi i64 [ 0, %entry ], [ %indvars.iv.next, %for.body ]
+  %arrayidx1 = getelementptr inbounds i8, i8* %src, i64 %indvars.iv
+  %1 = load i8, i8* %arrayidx1, align 4
+  %zxt = zext i8 %1 to i32
+  %add = add nsw i32 %0, %zxt
+  store i32 %zxt, i32* %arrayidx, align 4
+  %indvars.iv.next = add nuw nsw i64 %indvars.iv, 1
+  %exitcond = icmp eq i64 %indvars.iv.next, 1000
+  br i1 %exitcond, label %for.cond.cleanup, label %for.body
+
+; CHECK-SVE: ret i32 %add
+for.cond.cleanup:
+  ret i32 %add
 }
 
 ;CHECK-LABEL: @reduction_sum_multiuse(

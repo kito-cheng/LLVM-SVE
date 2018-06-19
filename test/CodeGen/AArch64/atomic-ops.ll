@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=aarch64-none-linux-gnu -disable-post-ra -verify-machineinstrs < %s | FileCheck %s
+; RUN: llc -mtriple=aarch64-none-linux-gnu -disable-post-ra -aarch64-sve-postvec=false -verify-machineinstrs < %s | FileCheck %s
 ; RUN: llc -mtriple=aarch64-none-linux-gnu -disable-post-ra -verify-machineinstrs < %s | FileCheck %s --check-prefix=CHECK-REG
 
 

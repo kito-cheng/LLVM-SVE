@@ -2612,8 +2612,8 @@ private:
   }
 
   /// \brief Compute a vector splat for a given element value.
-  Value *getVectorSplat(Value *V, unsigned NumElements) {
-    V = IRB.CreateVectorSplat(NumElements, V, "vsplat");
+  Value *getVectorSplat(VectorType *VT, Value *V) {
+    V = IRB.CreateVectorSplat(VT->getElementCount(), V, "vsplat");
     DEBUG(dbgs() << "       splat: " << *V << "\n");
     return V;
   }
@@ -2679,8 +2679,10 @@ private:
       Value *Splat =
           getIntegerSplat(II.getValue(), DL.getTypeSizeInBits(ElementTy) / 8);
       Splat = convertValue(DL, IRB, Splat, ElementTy);
-      if (NumElements > 1)
-        Splat = getVectorSplat(Splat, NumElements);
+      if (NumElements > 1) {
+        VectorType *VT = VectorType::get(Splat->getType(), NumElements);
+        Splat = getVectorSplat(VT, Splat);
+      }
 
       Value *Old =
           IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(), "oldload");
@@ -2712,7 +2714,7 @@ private:
 
       V = getIntegerSplat(II.getValue(), DL.getTypeSizeInBits(ScalarTy) / 8);
       if (VectorType *AllocaVecTy = dyn_cast<VectorType>(AllocaTy))
-        V = getVectorSplat(V, AllocaVecTy->getNumElements());
+        V = getVectorSplat(AllocaVecTy, V);
 
       V = convertValue(DL, IRB, V, AllocaTy);
     }
@@ -4068,7 +4070,14 @@ bool SROA::splitAlloca(AllocaInst &AI, AllocaSlices &AS) {
             continue;
           Size = std::min(Size, AbsEnd - Start);
         }
-        FragmentExpr = DIB.createFragmentExpression(Start, Size);
+        // The new, smaller fragment is stenciled out from the old fragment.
+        if (auto OrigFragment = FragmentExpr->getFragmentInfo()) {
+          assert(Start >= OrigFragment->OffsetInBits &&
+                 "new fragment is outside of original fragment");
+          Start -= OrigFragment->OffsetInBits;
+        }
+        FragmentExpr =
+            DIExpression::createFragmentExpression(Expr, Start, Size);
       }
 
       // Remove any existing dbg.declare intrinsic describing the same alloca.

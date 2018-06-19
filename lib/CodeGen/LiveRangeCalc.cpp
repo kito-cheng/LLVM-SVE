@@ -12,9 +12,27 @@
 //===----------------------------------------------------------------------===//
 
 #include "LiveRangeCalc.h"
+#include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/CodeGen/LiveInterval.h"
+#include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineDominators.h"
+#include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/SlotIndexes.h"
+#include "llvm/MC/LaneBitmask.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetRegisterInfo.h"
+#include <algorithm>
+#include <cassert>
+#include <iterator>
+#include <tuple>
+#include <utility>
 
 using namespace llvm;
 
@@ -410,7 +428,7 @@ bool LiveRangeCalc::findReachingDefs(LiveRange &LR, MachineBasicBlock &UseMBB,
 
   LiveIn.clear();
   FoundUndef |= (TheVNI == nullptr || TheVNI == &UndefVNI);
-  if (Undefs.size() > 0 && FoundUndef)
+  if (!Undefs.empty() && FoundUndef)
     UniqueVNI = false;
 
   // Both updateSSA() and LiveRangeUpdater benefit from ordered blocks, but
@@ -454,7 +472,7 @@ bool LiveRangeCalc::findReachingDefs(LiveRange &LR, MachineBasicBlock &UseMBB,
   LiveIn.reserve(WorkList.size());
   for (unsigned BN : WorkList) {
     MachineBasicBlock *MBB = MF->getBlockNumbered(BN);
-    if (Undefs.size() > 0 &&
+    if (!Undefs.empty() &&
         !isDefOnEntry(LR, Undefs, *MBB, DefOnEntry, UndefOnEntry))
       continue;
     addLiveInBlock(LR, DomTree->getNode(MBB));
@@ -464,7 +482,6 @@ bool LiveRangeCalc::findReachingDefs(LiveRange &LR, MachineBasicBlock &UseMBB,
 
   return false;
 }
-
 
 // This is essentially the same iterative algorithm that SSAUpdater uses,
 // except we already have a dominator tree, so we don't have to recompute it.

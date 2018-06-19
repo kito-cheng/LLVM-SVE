@@ -684,6 +684,7 @@ public:
   }
 
   SDValue getCondCode(ISD::CondCode Cond);
+  SDValue getTestCode(ISD::TestCode Cond);
 
   /// Return an ISD::VECTOR_SHUFFLE node. The number of elements in VT,
   /// which must be a vector type, must match the number of mask elements
@@ -722,6 +723,10 @@ public:
              "greater than the vector element type!");
       return getNode(ISD::UNDEF, SDLoc(), VT);
     }
+
+
+    return getNode(ISD::SPLAT_VECTOR, DL, VT, Op);
+
 
     SmallVector<SDValue, 16> Ops(VT.getVectorNumElements(), Op);
     return getNode(ISD::BUILD_VECTOR, DL, VT, Ops);
@@ -817,6 +822,12 @@ public:
     return getNode(ISD::UNDEF, SDLoc(), VT);
   }
 
+  /// Return the runtime scaling factor applicable to scalable vectors that is
+  /// itself scaled by 'MulImm'.
+  SDValue getVScale(const SDLoc &DL, EVT VT, int64_t MulImm=1) {
+    return getNode(ISD::VSCALE, DL, VT, getConstant(MulImm, DL, VT));
+  }
+
   /// Return a GLOBAL_OFFSET_TABLE node. This does not have a useful SDLoc.
   SDValue getGLOBAL_OFFSET_TABLE(EVT VT) {
     return getNode(ISD::GLOBAL_OFFSET_TABLE, SDLoc(), VT);
@@ -887,8 +898,13 @@ public:
       "Cannot compare scalars to vectors");
     assert(LHS.getValueType().isVector() == VT.isVector() &&
       "Cannot compare scalars to vectors");
+    assert(LHS.getValueType() == RHS.getValueType() &&
+      "Cannot compare different types");
+    assert(LHS.getValueType().isScalableVector() ==
+           VT.isScalableVector() &&
+      "Cannot compare different types");
     assert(Cond != ISD::SETCC_INVALID &&
-        "Cannot create a setCC of an invalid node.");
+      "Cannot create a setCC of an invalid node.");
     return getNode(ISD::SETCC, DL, VT, LHS, RHS, getCondCode(Cond));
   }
 
@@ -1035,9 +1051,11 @@ public:
                          MachineMemOperand *MMO, bool IsTruncating = false,
                          bool IsCompressing = false);
   SDValue getMaskedGather(SDVTList VTs, EVT VT, const SDLoc &dl,
-                          ArrayRef<SDValue> Ops, MachineMemOperand *MMO);
+                          ArrayRef<SDValue> Ops, MachineMemOperand *MMO,
+                          ISD::LoadExtType ExtTy, ISD::MemIndexType IndexType);
   SDValue getMaskedScatter(SDVTList VTs, EVT VT, const SDLoc &dl,
-                           ArrayRef<SDValue> Ops, MachineMemOperand *MMO);
+                           ArrayRef<SDValue> Ops, MachineMemOperand *MMO,
+                           bool IsTrunc, ISD::MemIndexType IndexType);
 
   /// Return (create a new or find existing) a target-specific node.
   /// TargetMemSDNode should be derived class from MemSDNode.
@@ -1166,17 +1184,18 @@ public:
                           const SDNodeFlags Flags = SDNodeFlags());
 
   /// Creates a SDDbgValue node.
-  SDDbgValue *getDbgValue(MDNode *Var, MDNode *Expr, SDNode *N, unsigned R,
-                          bool IsIndirect, uint64_t Off, const DebugLoc &DL,
+  SDDbgValue *getDbgValue(DIVariable *Var, DIExpression *Expr, SDNode *N,
+                          unsigned R, bool IsIndirect, const DebugLoc &DL,
                           unsigned O);
 
   /// Constant
-  SDDbgValue *getConstantDbgValue(MDNode *Var, MDNode *Expr, const Value *C,
-                                  uint64_t Off, const DebugLoc &DL, unsigned O);
+  SDDbgValue *getConstantDbgValue(DIVariable *Var, DIExpression *Expr,
+                                  const Value *C, const DebugLoc &DL,
+                                  unsigned O);
 
   /// FrameIndex
-  SDDbgValue *getFrameIndexDbgValue(MDNode *Var, MDNode *Expr, unsigned FI,
-                                    uint64_t Off, const DebugLoc &DL,
+  SDDbgValue *getFrameIndexDbgValue(DIVariable *Var, DIExpression *Expr,
+                                    unsigned FI, const DebugLoc &DL,
                                     unsigned O);
 
   /// Remove the specified node from the system. If any of its
@@ -1304,6 +1323,12 @@ public:
                                        ArrayRef<SDValue> Ops,
                                        const SDNodeFlags Flags = SDNodeFlags());
 
+  SDValue FoldSeriesVectorBinOp(unsigned Opcode, SDLoc DL, EVT VT, SDValue N1,
+                                SDValue N2, const SDNodeFlags Flags);
+
+  SDValue FoldSplatVectorBinOp(unsigned Opcode, SDLoc DL, EVT VT, SDValue N1,
+                               SDValue N2, const SDNodeFlags Flags);
+
   /// Constant fold a setcc to true or false.
   SDValue FoldSetCC(EVT VT, SDValue N1, SDValue N2, ISD::CondCode Cond,
                     const SDLoc &dl);
@@ -1409,6 +1434,10 @@ public:
   bool areNonVolatileConsecutiveLoads(LoadSDNode *LD, LoadSDNode *Base,
                                       unsigned Bytes, int Dist) const;
 
+  /// Returns true if Op is a splat of an integer constant. The splatted value
+  /// is returned via SplatValue when not null.
+  bool isConstantIntSplat(SDValue Op, APInt* SplatValue);
+
   /// Infer alignment of a load / store address. Return 0 if
   /// it cannot be inferred.
   unsigned InferPtrAlignment(SDValue Ptr) const;
@@ -1490,6 +1519,7 @@ private:
 
   /// Maps to auto-CSE operations.
   std::vector<CondCodeSDNode*> CondCodeNodes;
+  std::vector<TestCodeSDNode*> TestCodeNodes;
 
   std::vector<SDNode*> ValueTypeNodes;
   std::map<EVT, SDNode*, EVT::compareRawBits> ExtendedValueTypeNodes;

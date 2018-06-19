@@ -163,16 +163,36 @@ DiagnosticLocation::DiagnosticLocation(const DebugLoc &DL) {
   if (!DL)
     return;
   Filename = DL->getFilename();
-  Line = DL->getLine();
-  Column = DL->getColumn();
+  BeginLine = DL->getLine();
+  BeginColumn = DL->getColumn();
+  EndLine = BeginLine;
+  EndColumn = BeginColumn;
+}
+
+DiagnosticLocation::DiagnosticLocation(const DebugLoc &Begin,
+                                       const DebugLoc &End) {
+  if (!Begin)
+    return;
+  if (End)
+    assert (Begin->getFilename() == End->getFilename() && "Invalid range");
+  Filename = Begin->getFilename();
+  BeginLine = Begin->getLine();
+  BeginColumn = Begin->getColumn();
+  if (End) {
+    EndLine = End->getLine();
+    EndColumn = End->getColumn();
+  } else {
+    EndLine = BeginLine;
+    EndColumn = BeginColumn;
+  }
 }
 
 DiagnosticLocation::DiagnosticLocation(const DISubprogram *SP) {
   if (!SP)
     return;
   Filename = SP->getFilename();
-  Line = SP->getScopeLine();
-  Column = 0;
+  BeginLine = SP->getScopeLine();
+  BeginColumn = 0;
 }
 
 void DiagnosticInfoWithLocationBase::getLocation(StringRef *Filename,
@@ -181,6 +201,18 @@ void DiagnosticInfoWithLocationBase::getLocation(StringRef *Filename,
   *Filename = Loc.getFilename();
   *Line = Loc.getLine();
   *Column = Loc.getColumn();
+}
+
+void DiagnosticInfoWithLocationBase::getLocationRange(StringRef *Filename,
+                                                 unsigned *BeginLine,
+                                                 unsigned *BeginColumn,
+                                                 unsigned *EndLine,
+                                                 unsigned *EndColumn) const {
+  *Filename = Loc.getFilename();
+  *BeginLine = Loc.getBeginLine();
+  *BeginColumn = Loc.getBeginColumn();
+  *EndLine = Loc.getEndLine();
+  *EndColumn = Loc.getEndColumn();
 }
 
 const std::string DiagnosticInfoWithLocationBase::getLocationStr() const {

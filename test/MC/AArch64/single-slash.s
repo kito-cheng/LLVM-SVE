@@ -1,4 +1,5 @@
 // RUN: llvm-mc -triple aarch64-none-linux-gnu < %s | FileCheck %s
+// RUN: llvm-mc -triple aarch64-none-linux-gnu -mattr=+sve < %s | FileCheck %s
 
 // Test that a single slash is not mistaken as the start of comment.
 

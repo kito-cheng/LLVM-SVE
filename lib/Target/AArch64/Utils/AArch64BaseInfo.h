@@ -335,6 +335,25 @@ namespace AArch64PRFM {
   #include "AArch64GenSystemOperands.inc"
 }
 
+// TODO: Switch to SysAlias and require sve feature flag?
+namespace AArch64SVEPRFM {
+  struct SVEPRFM {
+    const char *Name;
+    uint16_t Encoding;
+  };
+#define GET_SVEPRFM_DECL
+#include "AArch64GenSystemOperands.inc"
+}
+
+namespace AArch64SVEPredPattern {
+  struct SVEPREDPAT {
+    const char *Name;
+    uint16_t Encoding;
+  };
+#define GET_SVEPREDPAT_DECL
+#include "AArch64GenSystemOperands.inc"
+}
+
 namespace AArch64PState {
   struct PState : SysAlias{
     using SysAlias::SysAlias;
@@ -349,6 +368,16 @@ namespace AArch64PSBHint {
   };
   #define GET_PSB_DECL
   #include "AArch64GenSystemOperands.inc"
+}
+
+namespace AArch64NamedFPImm {
+  struct NamedFPImm {
+    const char *Name;
+    int Enum;
+    const char *Repr;
+  };
+#define GET_NAMEDFPIMM_DECL
+#include "AArch64GenSystemOperands.inc"
 }
 
 namespace AArch64SE {
@@ -520,6 +549,18 @@ namespace AArch64II {
     MO_TLS = 0x40
   };
 } // end namespace AArch64II
+
+namespace AArch64 {
+// The number of bits in a SVE register is architecturally defined
+// to be a multiple of this value.  If <M x t> has this number of bits,
+// a <n x M x t> vector can be stored in a SVE register without any
+// redundant bits.  If <M x t> has this number of bits divided by P,
+// a <n x M x t> vector is stored in a SVE register by placing index i
+// in index i*P of a <n x (M*P) x t> vector.  The other elements of the
+// <n x (M*P) x t> vector (such as index 1) are undefined.
+const unsigned SVEBitsPerBlock = 128;
+const unsigned SVEMaxBitsPerVector = 2048;
+} // end namespace AArch64
 
 } // end namespace llvm
 

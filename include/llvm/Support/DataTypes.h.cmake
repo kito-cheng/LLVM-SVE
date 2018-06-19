@@ -35,7 +35,7 @@
 #include <math.h>
 #endif
 
-#ifdef __cplusplus
+#if __cplusplus >= 201103L
 #include <cinttypes>
 #else
 #ifdef HAVE_INTTYPES_H
@@ -43,7 +43,7 @@
 #endif
 #endif
 
-#ifdef __cplusplus
+#if __cplusplus >= 201103L
 #include <cstdint>
 #else
 #ifdef HAVE_STDINT_H

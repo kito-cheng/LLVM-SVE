@@ -336,6 +336,12 @@ public:
   Instruction *visitVAStartInst(VAStartInst &I);
   Instruction *visitVACopyInst(VACopyInst &I);
 
+  /// Try to clear store instruction I if it is redundant,
+  /// and possibly other redundant stores it may find when
+  /// scanning back from I.
+  /// \return true if I has been removed.
+  bool clearRedundantStore(Instruction *I);
+
   /// Specify what to return for unhandled instructions.
   Instruction *visitInstruction(Instruction &I) { return nullptr; }
 
@@ -434,7 +440,9 @@ private:
   };
   Value *EmitGEPOffset(User *GEP);
   Instruction *scalarizePHI(ExtractElementInst &EI, PHINode *PN);
+  Instruction *scalarizeGEP(GetElementPtrInst *GEP, unsigned Index);
   Value *EvaluateInDifferentElementOrder(Value *V, ArrayRef<int> Mask);
+  Value *FindScalarElement(Value *V, unsigned EltNo);
   Instruction *foldCastedBitwiseLogic(BinaryOperator &I);
   Instruction *shrinkBitwiseLogic(TruncInst &Trunc);
   Instruction *optimizeBitCastFromPhi(CastInst &CI, PHINode *PN);

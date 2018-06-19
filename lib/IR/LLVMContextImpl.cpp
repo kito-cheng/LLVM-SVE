@@ -90,6 +90,8 @@ LLVMContextImpl::~LLVMContextImpl() {
   UVConstants.clear();
   IntConstants.clear();
   FPConstants.clear();
+  SVVConstants.clear();
+  VSVConstants.clear();
 
   for (auto &CDSConstant : CDSConstants)
     delete CDSConstant.second;

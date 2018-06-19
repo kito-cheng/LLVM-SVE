@@ -46,8 +46,8 @@ bool X86CallLowering::splitToValueTypes(const ArgInfo &OrigArg,
   LLVMContext &Context = OrigArg.Ty->getContext();
 
   SmallVector<EVT, 4> SplitVTs;
-  SmallVector<uint64_t, 4> Offsets;
-  ComputeValueVTs(TLI, DL, OrigArg.Ty, SplitVTs, &Offsets, 0);
+  SmallVector<FieldOffsets, 4> Offsets;
+  ComputeValueVTs(TLI, DL, OrigArg.Ty, SplitVTs, &Offsets, {0,0});
 
   if (SplitVTs.size() != 1) {
     // TODO: support struct/array split

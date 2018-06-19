@@ -1,4 +1,5 @@
 // RUN: llvm-mc -triple=aarch64-none-linux-gnu < %s | FileCheck %s
+// RUN: llvm-mc -triple=aarch64-none-linux-gnu -mattr=+sve < %s | FileCheck %s
 // RUN: not llvm-mc -mattr=+no-neg-immediates -triple=aarch64-none-linux-gnu < %s 2>&1 | FileCheck %s --check-prefix=CHECK-NO-NEG-IMM
 
 // CHECK: sub w0, w2, #2, lsl #12

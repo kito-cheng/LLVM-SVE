@@ -470,7 +470,8 @@ static Instruction *shrinkSplatShuffle(TruncInst &Trunc,
                                        InstCombiner::BuilderTy &Builder) {
   auto *Shuf = dyn_cast<ShuffleVectorInst>(Trunc.getOperand(0));
   if (Shuf && Shuf->hasOneUse() && isa<UndefValue>(Shuf->getOperand(1)) &&
-      Shuf->getMask()->getSplatValue() &&
+      !Shuf->getType()->getVectorIsScalable() &&
+      cast<Constant>(Shuf->getMask())->getSplatValue() &&
       Shuf->getType() == Shuf->getOperand(0)->getType()) {
     // trunc (shuf X, Undef, SplatMask) --> shuf (trunc X), Undef, SplatMask
     Constant *NarrowUndef = UndefValue::get(Trunc.getType());
@@ -562,7 +563,7 @@ Instruction *InstCombiner::visitTrunc(TruncInst &CI) {
   // more efficiently. Support vector types. Cleanup code by using m_OneUse.
 
   // Transform trunc(lshr (zext A), Cst) to eliminate one type conversion.
-  Value *A = nullptr; ConstantInt *Cst = nullptr;
+  Value *A = nullptr; ConstantInt *Cst = nullptr; Constant *C = nullptr;
   if (Src->hasOneUse() &&
       match(Src, m_LShr(m_ZExt(m_Value(A)), m_ConstantInt(Cst)))) {
     // We have three types to worry about here, the type of A, the source of
@@ -642,6 +643,32 @@ Instruction *InstCombiner::visitTrunc(TruncInst &CI) {
           ConstantInt::get(DestTy, Cst->getValue().trunc(DestSize)));
       }
     }
+  }
+
+  // Transform "trunc (and X, cst)" -> "and (trunc X), trunc_cst"
+  if (isa<VectorType>(SrcTy) &&
+      match(Src, m_And(m_Value(A), m_Constant(C)))) {
+    Value *NewTrunc = Builder.CreateTrunc(A, DestTy, A->getName() + ".tr");
+    return BinaryOperator::CreateAnd(NewTrunc,
+                                     ConstantExpr::getTrunc(C, DestTy));
+  }
+
+  // Transform "trunc (add X, cst)" -> "add (trunc X), trunc_cst"
+  if (isa<VectorType>(SrcTy) &&
+      match(Src, m_Add(m_Value(A), m_Constant(C)))) {
+    Value *NewTrunc = Builder.CreateTrunc(A, DestTy, A->getName() + ".tr");
+    return BinaryOperator::CreateAdd(NewTrunc,
+                                     ConstantExpr::getTrunc(C, DestTy));
+  }
+
+  // Transform "trunc (splat X)" -> "splat (trunc X)"
+  if (Src->hasOneUse() && match(Src, m_SplatVector(m_Value(A)))) {
+    auto DestVTy = dyn_cast<VectorType>(DestTy);
+    Type *DestEltTy = DestVTy->getElementType();
+    Value *NewTrunc = Builder.CreateTrunc(A, DestEltTy, A->getName() + ".tr");
+    Value *Splat = Builder.CreateVectorSplat(DestVTy->getElementCount(),
+                                              NewTrunc);
+    return new BitCastInst(Splat, DestVTy);
   }
 
   if (Instruction *I = foldVecTruncToExtElt(CI, *this))
@@ -789,7 +816,8 @@ Instruction *InstCombiner::transformZExtICmp(ICmpInst *ICI, ZExtInst &CI,
 ///
 /// This function works on both vectors and scalars.
 static bool canEvaluateZExtd(Value *V, Type *Ty, unsigned &BitsToClear,
-                             InstCombiner &IC, Instruction *CxtI) {
+                             InstCombiner &IC, Instruction *CxtI,
+                             bool AllSameUse = false) {
   BitsToClear = 0;
   if (isa<Constant>(V))
     return true;
@@ -804,7 +832,7 @@ static bool canEvaluateZExtd(Value *V, Type *Ty, unsigned &BitsToClear,
 
   // We can't extend or shrink something that has multiple uses: doing so would
   // require duplicating the instruction in general, which isn't profitable.
-  if (!I->hasOneUse()) return false;
+  if (!I->hasOneUse() && !AllSameUse) return false;
 
   unsigned Opc = I->getOpcode(), Tmp;
   switch (Opc) {
@@ -907,13 +935,21 @@ Instruction *InstCombiner::visitZExt(ZExtInst &CI) {
   Value *Src = CI.getOperand(0);
   Type *SrcTy = Src->getType(), *DestTy = CI.getType();
 
+
+  bool AllSameUse = true;
+  for (Value *U : Src->users()) {
+    if (isa<ZExtInst>(U) && U->getType() == CI.getType())
+      continue;
+    AllSameUse = false;
+    break;
+  }
   // Attempt to extend the entire input expression tree to the destination
   // type.   Only do this if the dest type is a simple type, don't convert the
   // expression tree to something weird like i93 unless the source is also
   // strange.
   unsigned BitsToClear;
   if ((DestTy->isVectorTy() || shouldChangeType(SrcTy, DestTy)) &&
-      canEvaluateZExtd(Src, DestTy, BitsToClear, *this, &CI)) {
+      canEvaluateZExtd(Src, DestTy, BitsToClear, *this, &CI, AllSameUse)) {
     assert(BitsToClear <= SrcTy->getScalarSizeInBits() &&
            "Can't clear more bits than in SrcTy");
 
@@ -931,9 +967,16 @@ Instruction *InstCombiner::visitZExt(ZExtInst &CI) {
     if (MaskedValueIsZero(Res,
                           APInt::getHighBitsSet(DestBitSize,
                                                 DestBitSize-SrcBitsKept),
-                             0, &CI))
-      return replaceInstUsesWith(CI, Res);
+                             0, &CI)) {
+      if (AllSameUse) {
+        for (Value *U : Src->users()) {
+          if (U == &CI) continue;
+          replaceInstUsesWith(*(dyn_cast<Instruction>(U)), Res);
+        }
+      }
 
+      return replaceInstUsesWith(CI, Res);
+    }
     // We need to emit an AND to clear the high bits.
     Constant *C = ConstantInt::get(Res->getType(),
                                APInt::getLowBitsSet(DestBitSize, SrcBitsKept));
@@ -1117,7 +1160,7 @@ Instruction *InstCombiner::transformSExtICmp(ICmpInst *ICI, Instruction &CI) {
 ///
 /// This function works on both vectors and scalars.
 ///
-static bool canEvaluateSExtd(Value *V, Type *Ty) {
+static bool canEvaluateSExtd(Value *V, Type *Ty, bool AllSameUse = false) {
   assert(V->getType()->getScalarSizeInBits() < Ty->getScalarSizeInBits() &&
          "Can't sign extend type to a smaller type");
   // If this is a constant, it can be trivially promoted.
@@ -1133,7 +1176,7 @@ static bool canEvaluateSExtd(Value *V, Type *Ty) {
 
   // We can't extend or shrink something that has multiple uses: doing so would
   // require duplicating the instruction in general, which isn't profitable.
-  if (!I->hasOneUse()) return false;
+  if (!I->hasOneUse() && !AllSameUse) return false;
 
   switch (I->getOpcode()) {
   case Instruction::SExt:  // sext(sext(x)) -> sext(x)
@@ -1194,12 +1237,19 @@ Instruction *InstCombiner::visitSExt(SExtInst &CI) {
     return replaceInstUsesWith(CI, ZExt);
   }
 
+  bool AllSameUse = true;
+  for (Value *U : Src->users()) {
+    if (isa<SExtInst>(U) && U->getType() == CI.getType())
+      continue;
+    AllSameUse = false;
+    break;
+  }
   // Attempt to extend the entire input expression tree to the destination
   // type.   Only do this if the dest type is a simple type, don't convert the
   // expression tree to something weird like i93 unless the source is also
   // strange.
   if ((DestTy->isVectorTy() || shouldChangeType(SrcTy, DestTy)) &&
-      canEvaluateSExtd(Src, DestTy)) {
+      canEvaluateSExtd(Src, DestTy, AllSameUse)) {
     // Okay, we can transform this!  Insert the new expression now.
     DEBUG(dbgs() << "ICE: EvaluateInDifferentType converting expression type"
           " to avoid sign extend: " << CI << '\n');
@@ -1571,8 +1621,8 @@ Instruction *InstCombiner::visitIntToPtr(IntToPtrInst &CI) {
   if (CI.getOperand(0)->getType()->getScalarSizeInBits() !=
       DL.getPointerSizeInBits(AS)) {
     Type *Ty = DL.getIntPtrType(CI.getContext(), AS);
-    if (CI.getType()->isVectorTy()) // Handle vectors of pointers.
-      Ty = VectorType::get(Ty, CI.getType()->getVectorNumElements());
+    if (auto *CITy = dyn_cast<VectorType>(CI.getType()))
+      Ty = VectorType::get(Ty, CITy->getElementCount());
 
     Value *P = Builder.CreateZExtOrTrunc(CI.getOperand(0), Ty);
     return new IntToPtrInst(P, CI.getType());
@@ -1580,6 +1630,71 @@ Instruction *InstCombiner::visitIntToPtr(IntToPtrInst &CI) {
 
   if (Instruction *I = commonCastTransforms(CI))
     return I;
+
+  // Convert vector pointer arithmetic into a GetElementPtr.
+  if (CI.getType()->isVectorTy()) {
+    Value *Ptr, *Offsets;
+
+    if (match(CI.getOperand(0),
+              m_Add(m_Value(Offsets),
+                    m_PtrToInt(m_SplatVector(m_Value(Ptr))))))
+      /* match */;
+    else if (match(CI.getOperand(0),
+                   m_Add(m_PtrToInt(m_SplatVector(m_Value(Ptr))),
+                         m_Value(Offsets))))
+      /* match */;
+    else if (match(CI.getOperand(0),
+                   m_Add(m_PtrToInt(m_Value(Ptr)),
+                         m_SplatVector(m_Value(Offsets)))))
+      /* match */;
+    else if (match(CI.getOperand(0),
+                   m_Add(m_SplatVector(m_Value(Offsets)),
+                         m_PtrToInt(m_Value(Ptr)))))
+      /* match */;
+    else
+      return nullptr;
+
+    if (Ptr->getType()->isVectorTy() != Offsets->getType()->isVectorTy()) {
+      Type *Ty = CI.getType()->getScalarType()->getPointerElementType();
+
+      Type *PtrTy = CI.getType(); // vector_of_ptrs
+      if (!Ptr->getType()->isVectorTy())
+        PtrTy = PtrTy->getScalarType(); // ptr
+
+      // Bytes don't require scaling.
+      if (DL.getTypeAllocSize(Ty) == 1) {
+        Ptr = Builder.CreateBitCast(Ptr, PtrTy);
+        return GetElementPtrInst::Create(Ty, Ptr, Offsets);
+      } else {
+        Value *Indices;
+        const APInt *Scale;
+        const APInt AllocSize(64, DL.getTypeAllocSize(Ty));
+
+        // ptr + vector_of_indices
+        if (match(Offsets, m_Mul(m_Value(Indices),
+                                 m_SplatVector(m_APInt(Scale))))) {
+          if (*Scale == AllocSize) {
+            Ptr = Builder.CreateBitCast(Ptr, PtrTy);
+            return GetElementPtrInst::Create(Ty, Ptr, Indices);
+          }
+        // ptr + vector_of_indices
+        } else if (match(Offsets, m_Shl(m_Value(Indices),
+                                        m_SplatVector(m_APInt(Scale))))) {
+          if (*Scale == AllocSize.exactLogBase2()) {
+            Ptr = Builder.CreateBitCast(Ptr, PtrTy);
+            return GetElementPtrInst::Create(Ty, Ptr, Indices);
+          }
+        }
+        // vector_of_ptrs + index
+        else if (match(Offsets, m_Shl(m_Value(Indices), m_APInt(Scale)))) {
+          if (*Scale == AllocSize.exactLogBase2()) {
+            Ptr = Builder.CreateBitCast(Ptr, PtrTy);
+            return GetElementPtrInst::Create(Ty, Ptr, Indices);
+          }
+        }
+      }
+    }
+  }
 
   return nullptr;
 }
@@ -1854,7 +1969,7 @@ static Instruction *canonicalizeBitCastExtElt(BitCastInst &BitCast,
   if (!VectorType::isValidElementType(DestType))
     return nullptr;
 
-  unsigned NumElts = ExtElt->getVectorOperandType()->getNumElements();
+  auto NumElts = ExtElt->getVectorOperandType()->getElementCount();
   auto *NewVecType = VectorType::get(DestType, NumElts);
   auto *NewBC = IC.Builder.CreateBitCast(ExtElt->getVectorOperand(),
                                          NewVecType, "bc");

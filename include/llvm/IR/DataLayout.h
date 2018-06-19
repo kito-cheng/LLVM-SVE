@@ -397,6 +397,19 @@ public:
     return 8 * getTypeStoreSize(Ty);
   }
 
+  /// \brief Returns whether the type's store size is known at compile time.
+  ///
+  /// Scalable vectors have a fixed size but is only known at runtime.
+  ///
+  /// TODO: Use this in cases when the absolute value of getTypeStoreSizeInBits
+  /// is required.  At some point we will need to change this class so that we
+  /// can better compare the sizes of scalable vectors without needing to
+  /// know its absolute size.
+  bool isTypeStoreSizeKnown(Type *Ty) const {
+    auto* VTy = dyn_cast<VectorType>(Ty);
+    return !VTy || !VTy->isScalable();
+  }
+
   /// \brief Returns the offset in bytes between successive objects of the
   /// specified type, including alignment padding.
   ///

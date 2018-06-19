@@ -1,4 +1,6 @@
-; RUN: llc -O3 < %s -aarch64-enable-atomic-cfg-tidy=0 -aarch64-enable-gep-opt=false -verify-machineinstrs | FileCheck %s
+; RUN: llc -O3 -aarch64-sve-postvec=false -aarch64-sve-intrinsic-opts=false < %s -aarch64-enable-atomic-cfg-tidy=0 -aarch64-enable-gep-opt=false -sve-lower-gather-scatter-to-interleaved=false -verify-machineinstrs | FileCheck %s
+; sve-lower-gather-scatter-to-interleaved implicitly enables a late inst-combine
+; pass, which inconveniently folds away part of this test, so is disabled
 target triple = "arm64-apple-ios"
 
 ; rdar://12462006

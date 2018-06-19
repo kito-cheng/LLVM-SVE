@@ -1,5 +1,7 @@
 // RUN: not llvm-mc  -triple arm64-linux-gnu -mattr=-fp-armv8,-crc < %s 2> %t
 // RUN: FileCheck --check-prefix=CHECK-ERROR < %t %s
+// RUN: not llvm-mc  -triple arm64-linux-gnu -mattr=-fp-armv8,-crc,+sve < %s 2> %t
+// RUN: FileCheck --check-prefix=CHECK-ERROR < %t %s
 
 
         fcvt d0, s0

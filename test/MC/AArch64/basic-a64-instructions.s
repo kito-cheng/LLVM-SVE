@@ -1,4 +1,5 @@
 // RUN: llvm-mc -triple aarch64-none-linux-gnu -show-encoding -mattr=+fp-armv8 < %s | FileCheck %s
+// RUN: llvm-mc -triple aarch64-none-linux-gnu -show-encoding -mattr=+sve < %s | FileCheck %s
   .globl _func
 
 // Check that the assembler can handle the documented syntax from the ARM ARM.
@@ -1181,24 +1182,38 @@ _func:
 //------------------------------------------------------------------------------
 
         b.eq lbl
+        b.none lbl
         b.ne lbl
+        b.any lbl
         b.cs lbl
         b.hs lbl
+        b.nlast lbl
         b.lo lbl
         b.cc lbl
+        b.last lbl
         b.mi lbl
+        b.first lbl
         b.pl lbl
+        b.nfrst lbl
         b.vs lbl
         b.vc lbl
         b.hi lbl
+        b.pmore lbl
         b.ls lbl
+        b.plast lbl
         b.ge lbl
+        b.tcont lbl
         b.lt lbl
+        b.tstop lbl
         b.gt lbl
         b.le lbl
         b.al lbl
 
 // CHECK: b.eq lbl                     // encoding: [0bAAA00000,A,A,0x54]
+// CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
+// CHECK: b.eq lbl                     // encoding: [0bAAA00000,A,A,0x54]
+// CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
+// CHECK: b.ne lbl                     // encoding: [0bAAA00001,A,A,0x54]
 // CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
 // CHECK: b.ne lbl                     // encoding: [0bAAA00001,A,A,0x54]
 // CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
@@ -1206,11 +1221,19 @@ _func:
 // CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
 // CHECK: b.hs lbl                     // encoding: [0bAAA00010,A,A,0x54]
 // CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
+// CHECK: b.hs lbl                     // encoding: [0bAAA00010,A,A,0x54]
+// CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
+// CHECK: b.lo lbl                     // encoding: [0bAAA00011,A,A,0x54]
+// CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
 // CHECK: b.lo lbl                     // encoding: [0bAAA00011,A,A,0x54]
 // CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
 // CHECK: b.lo lbl                     // encoding: [0bAAA00011,A,A,0x54]
 // CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
 // CHECK: b.mi lbl                     // encoding: [0bAAA00100,A,A,0x54]
+// CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
+// CHECK: b.mi lbl                     // encoding: [0bAAA00100,A,A,0x54]
+// CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
+// CHECK: b.pl lbl                     // encoding: [0bAAA00101,A,A,0x54]
 // CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
 // CHECK: b.pl lbl                     // encoding: [0bAAA00101,A,A,0x54]
 // CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
@@ -1220,9 +1243,17 @@ _func:
 // CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
 // CHECK: b.hi lbl                     // encoding: [0bAAA01000,A,A,0x54]
 // CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
+// CHECK: b.hi lbl                     // encoding: [0bAAA01000,A,A,0x54]
+// CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
+// CHECK: b.ls lbl                     // encoding: [0bAAA01001,A,A,0x54]
+// CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
 // CHECK: b.ls lbl                     // encoding: [0bAAA01001,A,A,0x54]
 // CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
 // CHECK: b.ge lbl                     // encoding: [0bAAA01010,A,A,0x54]
+// CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
+// CHECK: b.ge lbl                     // encoding: [0bAAA01010,A,A,0x54]
+// CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
+// CHECK: b.lt lbl                     // encoding: [0bAAA01011,A,A,0x54]
 // CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
 // CHECK: b.lt lbl                     // encoding: [0bAAA01011,A,A,0x54]
 // CHECK:                              //   fixup A - offset: 0, value: lbl, kind: fixup_aarch64_pcrel_branch19
@@ -2382,10 +2413,14 @@ _func:
         ldr x4, [x29, #0]
         ldr x30, [x12, #32760]
         ldr x20, [sp, #8]
+	ldr x21, [x12, #8*8]
+	ldr x23, [x13, #(2+5+1)*8]
 // CHECK: ldr      x0, [x0]                   // encoding: [0x00,0x00,0x40,0xf9]
 // CHECK: ldr      x4, [x29]                  // encoding: [0xa4,0x03,0x40,0xf9]
 // CHECK: ldr      x30, [x12, #32760]         // encoding: [0x9e,0xfd,0x7f,0xf9]
 // CHECK: ldr      x20, [sp, #8]              // encoding: [0xf4,0x07,0x40,0xf9]
+// CHECK: ldr      x21, [x12, #64]              // encoding: [0x95,0x21,0x40,0xf9]
+// CHECK: ldr      x23, [x13, #64]              // encoding: [0xb7,0x21,0x40,0xf9]
 
 //// Rt treats 31 as zero-register
         ldr xzr, [sp]

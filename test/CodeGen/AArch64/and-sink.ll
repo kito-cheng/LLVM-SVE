@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=aarch64-linux-gnu -verify-machineinstrs < %s | FileCheck %s
+; RUN: llc -mtriple=aarch64-linux-gnu -verify-machineinstrs -aarch64-sve-postvec=false < %s | FileCheck %s
 ; RUN: opt -S -codegenprepare -mtriple=aarch64-linux %s | FileCheck --check-prefix=CHECK-CGP %s
 
 @A = global i32 zeroinitializer

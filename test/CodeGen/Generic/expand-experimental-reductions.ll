@@ -7,8 +7,8 @@ declare i64 @llvm.experimental.vector.reduce.and.i64.v2i64(<2 x i64>)
 declare i64 @llvm.experimental.vector.reduce.or.i64.v2i64(<2 x i64>)
 declare i64 @llvm.experimental.vector.reduce.xor.i64.v2i64(<2 x i64>)
 
-declare float @llvm.experimental.vector.reduce.fadd.f32.v4f32(float, <4 x float>)
-declare float @llvm.experimental.vector.reduce.fmul.f32.v4f32(float, <4 x float>)
+declare float @llvm.experimental.vector.reduce.fadd.f32.f32.v4f32(float, <4 x float>)
+declare float @llvm.experimental.vector.reduce.fmul.f32.f32.v4f32(float, <4 x float>)
 
 declare i64 @llvm.experimental.vector.reduce.smax.i64.v2i64(<2 x i64>)
 declare i64 @llvm.experimental.vector.reduce.smin.i64.v2i64(<2 x i64>)
@@ -95,7 +95,7 @@ define float @fadd_f32(<4 x float> %vec) {
 ; CHECK-NEXT:    ret float [[TMP0]]
 ;
 entry:
-  %r = call fast float @llvm.experimental.vector.reduce.fadd.f32.v4f32(float undef, <4 x float> %vec)
+  %r = call fast float @llvm.experimental.vector.reduce.fadd.f32.f32.v4f32(float undef, <4 x float> %vec)
   ret float %r
 }
 
@@ -106,7 +106,7 @@ define float @fadd_f32_strict(<4 x float> %vec) {
 ; CHECK-NEXT:    ret float [[R]]
 ;
 entry:
-  %r = call float @llvm.experimental.vector.reduce.fadd.f32.v4f32(float undef, <4 x float> %vec)
+  %r = call float @llvm.experimental.vector.reduce.fadd.f32.f32.v4f32(float undef, <4 x float> %vec)
   ret float %r
 }
 
@@ -121,7 +121,7 @@ define float @fmul_f32(<4 x float> %vec) {
 ; CHECK-NEXT:    ret float [[TMP0]]
 ;
 entry:
-  %r = call fast float @llvm.experimental.vector.reduce.fmul.f32.v4f32(float undef, <4 x float> %vec)
+  %r = call fast float @llvm.experimental.vector.reduce.fmul.f32.f32.v4f32(float undef, <4 x float> %vec)
   ret float %r
 }
 

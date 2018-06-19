@@ -1,4 +1,4 @@
-; RUN: llc < %s -mtriple=arm64-apple-ios -relocation-model=pic -disable-fp-elim | FileCheck %s
+; RUN: llc < %s -mtriple=arm64-apple-ios -relocation-model=pic -disable-fp-elim -aarch64-sve-postvec=false | FileCheck %s
 
 @__stack_chk_guard = external global i64*
 

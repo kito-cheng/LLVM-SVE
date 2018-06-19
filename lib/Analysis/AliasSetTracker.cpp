@@ -441,6 +441,36 @@ void AliasSetTracker::addUnknown(Instruction *Inst) {
   AS->addUnknownInst(Inst, AA);
 }
 
+static bool isVectorMemIntrinsic(Instruction *I, bool &IsWrite) {
+  if (const IntrinsicInst *II = dyn_cast<IntrinsicInst>(I)) {
+    switch (II->getIntrinsicID()) {
+      case Intrinsic::masked_load:
+      case Intrinsic::masked_spec_load:
+      case Intrinsic::masked_gather:
+        IsWrite = false;
+        return true;
+      case Intrinsic::masked_store:
+      case Intrinsic::masked_scatter:
+        IsWrite = true;
+        return true;
+      default:
+        return false;
+    }
+  }
+  return false;
+}
+
+void AliasSetTracker::add(IntrinsicInst *I, bool IsWrite) {
+  AAMDNodes AAInfo;
+  I->getAAMetadata(AAInfo);
+  Value *Ptr = I->getArgOperand(IsWrite ? 1 : 0);
+  AliasSet::AccessLattice Access =
+    IsWrite ? AliasSet::ModAccess : AliasSet::RefAccess;
+  // TODO: For fixed-width unmasked contiguous accesses we can find
+  // the access size, for now just assume unknown.
+  addPointer(Ptr, MemoryLocation::UnknownSize, AAInfo, Access);
+}
+
 void AliasSetTracker::add(Instruction *I) {
   // Dispatch to one of the other add methods.
   if (LoadInst *LI = dyn_cast<LoadInst>(I))
@@ -449,6 +479,11 @@ void AliasSetTracker::add(Instruction *I) {
     return add(SI);
   if (VAArgInst *VAAI = dyn_cast<VAArgInst>(I))
     return add(VAAI);
+  // Handle vector masked intrinsics by examining their pointer arguments
+  // like ordinary load/stores.
+  bool IsWrite;
+  if (isVectorMemIntrinsic(I, IsWrite))
+    return add(cast<IntrinsicInst>(I), IsWrite);
   if (MemSetInst *MSI = dyn_cast<MemSetInst>(I))
     return add(MSI);
   if (MemTransferInst *MTI = dyn_cast<MemTransferInst>(I))

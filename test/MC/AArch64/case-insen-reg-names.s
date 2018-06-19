@@ -1,4 +1,5 @@
 // RUN: llvm-mc -triple aarch64-none-linux-gnu -show-encoding < %s | FileCheck %s
+// RUN: llvm-mc -triple aarch64-none-linux-gnu -mattr=+sve -show-encoding < %s | FileCheck %s
 
 fadd v0.2d, v5.2d, v6.2d
 fadd V0.2d, V5.2d, V6.2d

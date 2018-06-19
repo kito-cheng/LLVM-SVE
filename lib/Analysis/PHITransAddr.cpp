@@ -412,7 +412,7 @@ InsertPHITranslatedSubExpr(Value *InVal, BasicBlock *CurBB,
     return Result;
   }
 
-#if 0
+#if 1
   // FIXME: This code works, but it is unclear that we actually want to insert
   // a big chain of computation in order to make a value available in a block.
   // This needs to be evaluated carefully to consider its cost trade offs.

@@ -391,21 +391,6 @@ def asextloadi32 : PatFrag<(ops node:$ptr), (asextload node:$ptr), [{
   return cast<LoadSDNode>(N)->getMemoryVT() == MVT::i32;
 }]>;
 
-// Extending loads in which the extension type can be unsigned.
-def azextload : PatFrag<(ops node:$ptr), (unindexedload node:$ptr), [{
-  unsigned Type = cast<LoadSDNode>(N)->getExtensionType();
-  return Type == ISD::EXTLOAD || Type == ISD::ZEXTLOAD;
-}]>;
-def azextloadi8 : PatFrag<(ops node:$ptr), (azextload node:$ptr), [{
-  return cast<LoadSDNode>(N)->getMemoryVT() == MVT::i8;
-}]>;
-def azextloadi16 : PatFrag<(ops node:$ptr), (azextload node:$ptr), [{
-  return cast<LoadSDNode>(N)->getMemoryVT() == MVT::i16;
-}]>;
-def azextloadi32 : PatFrag<(ops node:$ptr), (azextload node:$ptr), [{
-  return cast<LoadSDNode>(N)->getMemoryVT() == MVT::i32;
-}]>;
-
 // Extending loads in which the extension type doesn't matter.
 def anyextload : PatFrag<(ops node:$ptr), (unindexedload node:$ptr), [{
   return cast<LoadSDNode>(N)->getExtensionType() != ISD::NON_EXTLOAD;

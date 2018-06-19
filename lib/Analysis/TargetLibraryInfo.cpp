@@ -17,6 +17,8 @@
 #include "llvm/Support/CommandLine.h"
 using namespace llvm;
 
+#define DEBUG_TYPE "target-library-info"
+
 static cl::opt<TargetLibraryInfoImpl::VectorLibrary> ClVectorLibrary(
     "vector-library", cl::Hidden, cl::desc("Vector functions library"),
     cl::init(TargetLibraryInfoImpl::NoLibrary),
@@ -182,6 +184,9 @@ static void initialize(TargetLibraryInfoImpl &TLI, const Triple &T,
     TLI.setUnavailable(LibFunc_atanh);
     TLI.setUnavailable(LibFunc_atanhf);
     TLI.setUnavailable(LibFunc_atanhl);
+    TLI.setUnavailable(LibFunc_cabs);
+    TLI.setUnavailable(LibFunc_cabsf);
+    TLI.setUnavailable(LibFunc_cabsl);
     TLI.setUnavailable(LibFunc_cbrt);
     TLI.setUnavailable(LibFunc_cbrtf);
     TLI.setUnavailable(LibFunc_cbrtl);
@@ -501,6 +506,11 @@ TargetLibraryInfoImpl::TargetLibraryInfoImpl(const TargetLibraryInfoImpl &TLI)
   memcpy(AvailableArray, TLI.AvailableArray, sizeof(AvailableArray));
   VectorDescs = TLI.VectorDescs;
   ScalarDescs = TLI.ScalarDescs;
+  // Copy the multimap with a loop instead of the assignment operator to prevent
+  // build failures on systems with an old C++ STL library.
+  assert(VectorFunctionInfo.empty() && "Not a valid multimap.");
+  for (const auto &VFI : TLI.VectorFunctionInfo)
+    VectorFunctionInfo.insert(VFI);
 }
 
 TargetLibraryInfoImpl::TargetLibraryInfoImpl(TargetLibraryInfoImpl &&TLI)
@@ -512,6 +522,11 @@ TargetLibraryInfoImpl::TargetLibraryInfoImpl(TargetLibraryInfoImpl &&TLI)
             AvailableArray);
   VectorDescs = TLI.VectorDescs;
   ScalarDescs = TLI.ScalarDescs;
+  // Copy the multimap with a loop instead of the assignment operator to prevent
+  // build failures on systems with an old C++ STL library.
+  assert(VectorFunctionInfo.empty() && "Not a valid multimap.");
+  for (const auto &VFI : TLI.VectorFunctionInfo)
+    VectorFunctionInfo.insert(VFI);
 }
 
 TargetLibraryInfoImpl &TargetLibraryInfoImpl::operator=(const TargetLibraryInfoImpl &TLI) {
@@ -1267,6 +1282,15 @@ bool TargetLibraryInfoImpl::isValidProtoForLibFunc(const FunctionType &FTy,
     return (NumParams == 1 && FTy.getParamType(0)->isPointerTy() &&
             FTy.getReturnType()->isIntegerTy());
 
+  case LibFunc_cabs:
+  case LibFunc_cabsf:
+  case LibFunc_cabsl:
+    return (NumParams == 1 &&
+            FTy.getParamType(0)->isArrayTy() &&
+            FTy.getParamType(0)->getArrayNumElements() == 2 &&
+            FTy.getReturnType() == FTy.getParamType(0)->getArrayElementType() &&
+            FTy.getReturnType()->isFloatingPointTy());
+
   case LibFunc::NumLibFuncs:
     break;
   }
@@ -1461,22 +1485,47 @@ bool TargetLibraryInfoImpl::isFunctionVectorizable(StringRef funcName) const {
   std::vector<VecDesc>::const_iterator I = std::lower_bound(
       VectorDescs.begin(), VectorDescs.end(), funcName,
       compareWithScalarFnName);
-  return I != VectorDescs.end() && StringRef(I->ScalarFnName) == funcName;
+  if (I != VectorDescs.end())
+    return StringRef(I->ScalarFnName) == funcName;
+
+  return VectorFunctionInfo.find(funcName.str()) != VectorFunctionInfo.end();
 }
 
-StringRef TargetLibraryInfoImpl::getVectorizedFunction(StringRef F,
-                                                       unsigned VF) const {
+std::string
+TargetLibraryInfoImpl::getVectorizedFunction(StringRef F, unsigned VF,
+                                             FunctionType *Sign) const {
+  DEBUG(dbgs() << "TLI: getVectorizedFunction\n"
+        << "\tF: " << F << "\n"
+        << "\tVF: " << VF << "\n"
+        << "\tSign: " << *Sign << "\n");
+
   F = sanitizeFunctionName(F);
-  if (F.empty())
+  if (F.empty() || VF == 1)
     return F;
   std::vector<VecDesc>::const_iterator I = std::lower_bound(
       VectorDescs.begin(), VectorDescs.end(), F, compareWithScalarFnName);
   while (I != VectorDescs.end() && StringRef(I->ScalarFnName) == F) {
-    if (I->VectorizationFactor == VF)
+    if (I->VectorizationFactor == VF) {
+      DEBUG(dbgs() << "* Found a vector function in the static list: "
+            << I->VectorFnName << "\n");
       return I->VectorFnName;
+    }
     ++I;
   }
-  return StringRef();
+
+  auto Range = llvm::make_range(VectorFunctionInfo.equal_range(F.str()));
+  for (auto VecInfo : Range) {
+    if (VecInfo.second.Signature == Sign) {
+      assert(!VecInfo.second.Name.empty() && "Empty function name");
+      DEBUG(dbgs() << "* Found a vector function in the OpenMP dynamic list: "
+            << VecInfo.second.Name << "\n"
+            << "  with signature: " << *VecInfo.second.Signature << "\n");
+
+      return VecInfo.second.Name;
+    }
+  }
+
+  return "";
 }
 
 StringRef TargetLibraryInfoImpl::getScalarizedFunction(StringRef F,
@@ -1559,3 +1608,91 @@ INITIALIZE_PASS(TargetLibraryInfoWrapperPass, "targetlibinfo",
 char TargetLibraryInfoWrapperPass::ID = 0;
 
 void TargetLibraryInfoWrapperPass::anchor() {}
+
+void TargetLibraryInfoImpl::addOpenMPVectorFunctions(Module *M) {
+  DEBUG(dbgs() << "TLI: List 'declare simd'-generated globals :\n");
+  for (auto &GV : M->functions()) {
+    auto Name = GV.getName();
+    // Skip invalid names
+    if (!isMangledName(Name))
+      continue;
+
+    const auto Ty = GV.getType();
+    FunctionType *FTy;
+    // Skip invalid types
+    if (!isValidSignature(Ty, FTy))
+      continue;
+
+    DEBUG(dbgs() << GV << "\n");
+
+    const auto Names = demangle(Name);
+    const VectorFnInfo VecInfo = {Names.first, FTy};
+    VectorFunctionInfo.emplace(Names.second, VecInfo);
+  }
+
+  DEBUG(dbgs() << "TLI: List of functions added with 'declare simd':\n");
+  for (auto &VFI :  VectorFunctionInfo) {
+    DEBUG(dbgs() << "Scalar name: " << VFI.first << "\n"
+          << "Vector name: " << VFI.second.Name << "\n"
+          << "Vector signature: " << *VFI.second.Signature << "\n");
+  }
+}
+
+namespace {
+bool checkTys(ArrayRef<Type *> Params) {
+  for (auto &Ty : Params) {
+    if (Ty->isVectorTy())
+      return true;
+  }
+  return false;
+}
+
+const std::string Prefix = "vec_prefix_";
+const std::string Postfix = "_vec_postfix";
+const std::string Midfix = "_vec_midfix_";
+}
+
+std::pair<std::string, std::string>
+TargetLibraryInfoImpl::demangle(const std::string In) {
+  StringRef Out = StringRef(In).drop_back(Postfix.size());
+  StringRef Tmp = Out.drop_front(Prefix.size());
+  auto Split = Tmp.split(Midfix);
+  return std::make_pair<std::string, std::string>(Split.first, Split.second);
+}
+
+bool TargetLibraryInfoImpl::isMangledName(const std::string Name) {
+  auto RefName = StringRef(Name);
+  const bool HasPrefix = RefName.startswith(Prefix);
+  const bool HasSuffix = RefName.endswith(Postfix);
+  const bool HasMidfix = RefName.contains(Midfix);
+
+  if (HasPrefix && HasMidfix && HasSuffix) {
+    auto Split = demangle(Name);
+    return !Split.first.empty() && !Split.second.empty();
+  }
+
+  return false;
+}
+
+bool TargetLibraryInfoImpl::isValidSignature(Type *Ty, FunctionType *&FTy) {
+  if (!Ty->isPointerTy())
+    return false;
+
+  FTy = dyn_cast<FunctionType>(Ty->getPointerElementType());
+
+  if (!FTy)
+    return false;
+
+  auto RetTy = FTy->getReturnType();
+
+  if (RetTy->isVectorTy())
+    return true;
+
+  return RetTy->isVoidTy() && checkTys(FTy->params());
+}
+
+std::string TargetLibraryInfoImpl::mangle(const std::string VecName,
+                                          const std::string ScalarName) {
+  const std::string Ret = Prefix + VecName + Midfix + ScalarName + Postfix;
+  return Ret;
+}

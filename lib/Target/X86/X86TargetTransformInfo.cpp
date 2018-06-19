@@ -66,6 +66,57 @@ X86TTIImpl::getPopcntSupport(unsigned TyWidth) {
   return ST->hasPOPCNT() ? TTI::PSK_FastHardware : TTI::PSK_Software;
 }
 
+llvm::Optional<unsigned> X86TTIImpl::getCacheSize(
+  TargetTransformInfo::CacheLevel Level) const {
+  switch (Level) {
+  case TargetTransformInfo::CacheLevel::L1D:
+    //   - Penry
+    //   - Nehalem
+    //   - Westmere
+    //   - Sandy Bridge
+    //   - Ivy Bridge
+    //   - Haswell
+    //   - Broadwell
+    //   - Skylake
+    //   - Kabylake
+    return 32 * 1024;  //  32 KByte
+  case TargetTransformInfo::CacheLevel::L2D:
+    //   - Penry
+    //   - Nehalem
+    //   - Westmere
+    //   - Sandy Bridge
+    //   - Ivy Bridge
+    //   - Haswell
+    //   - Broadwell
+    //   - Skylake
+    //   - Kabylake
+    return 256 * 1024; // 256 KByte
+  }
+
+  llvm_unreachable("Unknown TargetTransformInfo::CacheLevel");
+}
+
+llvm::Optional<unsigned> X86TTIImpl::getCacheAssociativity(
+  TargetTransformInfo::CacheLevel Level) const {
+  //   - Penry
+  //   - Nehalem
+  //   - Westmere
+  //   - Sandy Bridge
+  //   - Ivy Bridge
+  //   - Haswell
+  //   - Broadwell
+  //   - Skylake
+  //   - Kabylake
+  switch (Level) {
+  case TargetTransformInfo::CacheLevel::L1D:
+    LLVM_FALLTHROUGH;
+  case TargetTransformInfo::CacheLevel::L2D:
+    return 8;
+  }
+
+  llvm_unreachable("Unknown TargetTransformInfo::CacheLevel");
+}
+
 unsigned X86TTIImpl::getNumberOfRegisters(bool Vector) {
   if (Vector && !ST->hasSSE1())
     return 0;
@@ -2181,6 +2232,29 @@ int X86TTIImpl::getGatherScatterOpCost(unsigned Opcode, Type *SrcVTy,
                            AddressSpace);
 
   return getGSVectorCost(Opcode, SrcVTy, Ptr, Alignment, AddressSpace);
+}
+
+unsigned X86TTIImpl::getVectorMemoryOpCost(unsigned Opcode, Type *Src,
+                                           Value *Ptr, unsigned Alignment,
+                                           unsigned AddressSpace,
+                                           const MemAccessInfo &Info,
+                                           Instruction *I) {
+  unsigned Cost;
+
+  if (Info.isUniform())
+    // Broadcast cost handled separately.
+    // TODO: Maybe it shouldn't be?
+    Cost = getMemoryOpCost(Opcode, Src->getScalarType(),
+                           Alignment, AddressSpace);
+  else if (Info.isStrided() && std::abs(Info.getStride())==1) {
+    if (Info.isMasked())
+      Cost = getMaskedMemoryOpCost(Opcode, Src, Alignment, AddressSpace);
+    else
+      Cost = getMemoryOpCost(Opcode, Src, Alignment, AddressSpace);
+  } else
+    Cost = getGatherScatterOpCost(Opcode, Src, Ptr, Info.isMasked(), Alignment);
+
+  return Cost;
 }
 
 bool X86TTIImpl::isLegalMaskedLoad(Type *DataTy) {

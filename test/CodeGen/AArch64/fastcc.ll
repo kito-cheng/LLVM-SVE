@@ -1,6 +1,6 @@
-; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64-none-linux-gnu -disable-fp-elim -tailcallopt | FileCheck %s -check-prefix CHECK-TAIL
-; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64-none-linux-gnu -disable-fp-elim | FileCheck %s
-; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64-none-linux-gnu -disable-fp-elim -tailcallopt -aarch64-redzone | FileCheck %s -check-prefix CHECK-TAIL-RZ
+; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64-none-linux-gnu -disable-fp-elim -aarch64-sve-postvec=false -tailcallopt | FileCheck %s -check-prefix CHECK-TAIL
+; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64-none-linux-gnu -disable-fp-elim -aarch64-sve-postvec=false | FileCheck %s
+; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64-none-linux-gnu -disable-fp-elim -aarch64-sve-postvec=false -tailcallopt -aarch64-redzone | FileCheck %s -check-prefix CHECK-TAIL-RZ
 
 ; Without tailcallopt fastcc still means the caller cleans up the
 ; stack, so try to make sure this is respected.

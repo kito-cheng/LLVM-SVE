@@ -1,5 +1,7 @@
 // RUN: not llvm-mc -triple=aarch64 -mattr=+neon,-fullfp16 -show-encoding < %s 2>&1 | FileCheck %s
 // RUN: not llvm-mc -triple=aarch64 -mattr=-neon,+fullfp16 -show-encoding < %s 2>&1 | FileCheck %s
+// RUN: not llvm-mc -triple=aarch64 -mattr=+neon,-fullfp16,+sve -show-encoding < %s 2>&1 | FileCheck %s
+// RUN: not llvm-mc -triple=aarch64 -mattr=-neon,+fullfp16,+sve -show-encoding < %s 2>&1 | FileCheck %s
 
 
 // CHECK: :[[@LINE+1]]:{{[0-9]+}}: error: instruction requires:

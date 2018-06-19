@@ -16,7 +16,7 @@ define %struct.uint8x16x4_t @test1() {
 ; Destination registers are defined by the ABI
 ; PROMOTED-NEXT: ldp q0, q1, {{\[}}[[BASEADDR]]]
 ; PROMOTED-NEXT: ldp q2, q3, {{\[}}[[BASEADDR]], #32]
-; PROMOTED-NEXT: ret
+; PROMOTED: ret
 
 ; REGULAR-LABEL: test1:
 ; Regular access is quite bad, it performs 4 loads, one for each chunk of

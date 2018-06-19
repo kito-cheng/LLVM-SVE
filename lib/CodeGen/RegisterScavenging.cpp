@@ -531,7 +531,7 @@ RegScavenger::spill(unsigned Reg, const TargetRegisterClass &RC, int SPAdj,
 
 unsigned RegScavenger::scavengeRegister(const TargetRegisterClass *RC,
                                         MachineBasicBlock::iterator I,
-                                        int SPAdj) {
+                                        int SPAdj, bool SRLiveRangeEndsHere) {
   MachineInstr &MI = *I;
   const MachineFunction &MF = *MI.getParent()->getParent();
   // Consider all allocatable registers in the register class initially
@@ -539,10 +539,16 @@ unsigned RegScavenger::scavengeRegister(const TargetRegisterClass *RC,
 
   // Exclude all the registers being used by the instruction.
   for (const MachineOperand &MO : MI.operands()) {
-    if (MO.isReg() && MO.getReg() != 0 && !(MO.isUse() && MO.isUndef()) &&
-        !TargetRegisterInfo::isVirtualRegister(MO.getReg()))
+    if (MO.isReg() && MO.getReg() != 0 && (MO.isDef() || !MO.isUndef()) &&
+        !TargetRegisterInfo::isVirtualRegister(MO.getReg())) {
+      // We can reuse the destination register if it is not an earlyclobber
+      // and 'I' kills the scavenged register
+      if (MO.isDef() && SRLiveRangeEndsHere && !MO.isEarlyClobber())
+        continue;
+
       for (MCRegAliasIterator AI(MO.getReg(), TRI, true); AI.isValid(); ++AI)
         Candidates.reset(*AI);
+    }
   }
 
   // Try to find a register that's unused if there is one, as then we won't

@@ -344,6 +344,34 @@ Loop::LocRange Loop::getLocRange() const {
   return LocRange();
 }
 
+void Loop::getAttachedDebugLocations(std::vector<DebugLoc> &Locs) const {
+  // If we have a debug location in the loop ID, then use it.
+  if (MDNode *LoopID = getLoopID()) {
+    for (unsigned i = 1, ie = LoopID->getNumOperands(); i < ie; ++i) {
+      if (DILocation *L = dyn_cast<DILocation>(LoopID->getOperand(i))) {
+        Locs.push_back({L});
+      }
+    }
+
+    if (!Locs.empty())
+      return;
+  }
+
+  // Try the pre-header first.
+  if (BasicBlock *PHeadBB = getLoopPreheader())
+    if (DebugLoc DL = PHeadBB->getTerminator()->getDebugLoc()) {
+      Locs.push_back(DL);
+      return;
+    }
+
+  // If we have no pre-header or there are no instructions with debug
+  // info in it, try the header.
+  if (BasicBlock *HeadBB = getHeader())
+    Locs.push_back(HeadBB->getTerminator()->getDebugLoc());
+
+  return;
+}
+
 bool Loop::hasDedicatedExits() const {
   // Each predecessor of each exit block of a normal loop is contained
   // within the loop.

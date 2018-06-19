@@ -910,6 +910,21 @@ define i32* @test49(i32* %I, i64 %C) {
 ; CHECK-NEXT: %B = getelementptr i32, i32* %I, i64 -1
 }
 
+; Don't loose the implicit multiplication of a runtime constant that
+; results when indexing into an array of scalable vectors.
+define i32* @test50(i32* %a) {
+entry:
+  %c1 = bitcast i32* %a to <n x 4 x i32>*
+  %g1 = getelementptr <n x 4 x i32>, <n x 4 x i32>* %c1, i32 2
+  %c2 = bitcast <n x 4 x i32>* %g1 to i32*
+  %g2 = getelementptr i32, i32* %c2, i32 1
+  ret i32* %g2
+; CHECK-LABEL:      @test50(
+; CHECK:      [[CAST:%.*]] = bitcast i32* %a to <n x 4 x i32>*
+; CHECK-NEXT: [[GEP:%.*]] = getelementptr <n x 4 x i32>, <n x 4 x i32>* [[CAST]], i64 2, i64 1
+; CHECK-NEXT: ret i32* [[GEP]]
+}
+
 define i32 addrspace(1)* @ascast_0_gep(i32* %p) nounwind {
 ; CHECK-LABEL: @ascast_0_gep(
 ; CHECK-NOT: getelementptr

@@ -115,9 +115,22 @@ Pass *createLoopVectorizePass(bool NoUnrolling = false,
 
 //===----------------------------------------------------------------------===//
 //
+// LoopVectorize - Create an SVE loop vectorization pass.
+//
+Pass *createSVELoopVectorizePass(bool NoUnrolling = false,
+                              bool AlwaysVectorize = true);
+
+//===----------------------------------------------------------------------===//
+//
 // SLPVectorizer - Create a bottom-up SLP vectorizer pass.
 //
 Pass *createSLPVectorizerPass();
+
+//===----------------------------------------------------------------------===//
+//
+// BOSCC - Create a BOSCC post vectorizer pass.
+//
+Pass *createBOSCCPass();
 
 //===----------------------------------------------------------------------===//
 /// @brief Vectorize the BasicBlock.

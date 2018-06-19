@@ -1,5 +1,7 @@
 // RUN: not llvm-mc -triple arm64 -mattr=neon -show-encoding < %s 2>%t | FileCheck %s
 // RUN: FileCheck --check-prefix=CHECK-ERRORS < %t %s
+// RUN: not llvm-mc -triple arm64 -mattr=neon,+sve -show-encoding < %s 2>%t | FileCheck %s
+// RUN: FileCheck --check-prefix=CHECK-ERRORS < %t %s
 
     ST4     {v0.8B-v3.8B}, [x0]
     ST4     {v0.4H-v3.4H}, [x0]

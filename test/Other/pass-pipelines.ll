@@ -17,7 +17,10 @@
 ; CHECK-O2: Pass Arguments:
 ; CHECK-O2: ModulePass Manager
 ; CHECK-O2-NOT: Manager
-; First function pass pipeline just does early opts.
+; First function pass pipeline does GVN after Pre-inlining transforms.
+; CHECK-O2: Pre-inlining transforms
+; CHECK-O2-NEXT: FunctionPass Manager
+; Second function pass pipeline just does early opts.
 ; CHECK-O2: FunctionPass Manager
 ; CHECK-O2-NOT: Manager
 ; FIXME: It's a bit odd to do dead arg elim in the middle of early opts...
@@ -46,6 +49,11 @@
 ; CHECK-O2-NOT: Manager
 ; CHECK-O2: Loop Pass Manager
 ; CHECK-O2-NOT: Manager
+; We rewrite GEPs before GVN attempts Load PRE.
+; CHECK-O2: Loop Pass Manager
+; CHECK-O2-NEXT: Rewrite GEPs in Loop
+; CHECK-O2-NOT: Manager
+; CHECK-02: Global Value Numbering
 ; FIXME: It isn't clear that we need yet another loop pass pipeline
 ; and run of LICM here.
 ; CHECK-O2-NOT: Manager
@@ -55,6 +63,7 @@
 ; Next we break out of the main Function passes inside the CGSCC pipeline with
 ; a barrier pass.
 ; CHECK-O2: A No-Op Barrier Pass
+; CHECK-O2-NEXT: Partial Inliner
 ; Reduce the size of the IR ASAP after the inliner.
 ; CHECK-O2-NEXT: Eliminate Available Externally
 ; Inferring function attribute should be right after the CGSCC pipeline, before
@@ -68,7 +77,6 @@
 ; We rotate loops prior to vectorization.
 ; CHECK-O2: Loop Pass Manager
 ; CHECK-O2-NEXT: Rotate Loops
-; CHECK-O2-NOT: Manager
 ; CHECK-O2: Loop Vectorization
 ; CHECK-O2-NOT: Manager
 ; CHECK-O2: SLP Vectorizer

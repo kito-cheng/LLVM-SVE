@@ -23759,7 +23759,8 @@ static SDValue LowerMSCATTER(SDValue Op, const X86Subtarget &Subtarget,
   SDVTList VTs = DAG.getVTList(BitMaskVT, MVT::Other);
   SDValue Ops[] = {Chain, Src, Mask, BasePtr, Index};
   NewScatter = DAG.getMaskedScatter(VTs, N->getMemoryVT(), dl, Ops,
-                                    N->getMemOperand());
+                                    N->getMemOperand(), N->isTruncatingStore(),
+                                    N->getIndexType());
   DAG.ReplaceAllUsesWith(Op, SDValue(NewScatter.getNode(), 1));
   return SDValue(NewScatter.getNode(), 1);
 }
@@ -23925,7 +23926,9 @@ static SDValue LowerMGATHER(SDValue Op, const X86Subtarget &Subtarget,
     SDValue Ops[] = { N->getChain(), Src0, Mask, N->getBasePtr(), Index };
     SDValue NewGather = DAG.getMaskedGather(DAG.getVTList(NewVT, MVT::Other),
                                             N->getMemoryVT(), dl, Ops,
-                                            N->getMemOperand());
+                                            N->getMemOperand(),
+                                            N->getExtensionType(),
+                                            N->getIndexType());
     SDValue Exract = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, VT,
                                  NewGather.getValue(0),
                                  DAG.getIntPtrConstant(0, dl));

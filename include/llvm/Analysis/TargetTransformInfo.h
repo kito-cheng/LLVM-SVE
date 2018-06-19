@@ -66,6 +66,117 @@ struct MemIntrinsicInfo {
   }
 };
 
+/// \brief Information about the memory access pattern for a given
+/// load/store instruction.
+class MemAccessInfo {
+public:
+  enum MemAccessInfoType {
+    UNIFORM = 0,
+    STRIDED = 1,
+    NONSTRIDED = 2
+  };
+
+private:
+  // The type of access (uniform, strided, gather/scatter)
+  MemAccessInfoType Access;
+
+  // Predicated access
+  bool IsMasked;
+
+  struct StridedInfoStruct {
+    int   Stride;
+    bool  IsReversed;
+  };
+
+  struct NonStridedInfoStruct {
+    Type *IndexType;
+    bool  IsSignedIndex;
+  };
+
+  // Access-specific information
+  union {
+    struct StridedInfoStruct    StridedInfo;
+    struct NonStridedInfoStruct NonStridedInfo;
+  };
+
+  // Privater constructors
+  MemAccessInfo () : Access(UNIFORM), IsMasked(false) {}
+
+  MemAccessInfo (int stride, bool isReversed, bool isMasked) :
+        Access(STRIDED), IsMasked(isMasked) {
+    StridedInfo.Stride = stride;
+    StridedInfo.IsReversed = isReversed;
+  }
+
+  MemAccessInfo (Type *idxType, bool isSignedIndex, bool isMasked) :
+        Access(NONSTRIDED), IsMasked(isMasked) {
+    NonStridedInfo.IsSignedIndex = isSignedIndex;
+    NonStridedInfo.IndexType = idxType;
+  }
+
+public:
+  // Static methods to create a MemAccessInfo
+  static MemAccessInfo getUniformInfo() {
+    return MemAccessInfo();
+  }
+
+  static MemAccessInfo getStridedInfo(int stride, bool isReversed,
+                                      bool isMasked) {
+    return MemAccessInfo(stride, isReversed, isMasked);
+  }
+
+  static MemAccessInfo getNonStridedInfo(Type *idxType, bool isMasked,
+                                         bool isSignedIdx = true) {
+    return MemAccessInfo(idxType, isSignedIdx, isMasked);
+  }
+
+  // Accessor methods
+  MemAccessInfoType getAccessType() const {
+    return Access;
+  }
+
+  bool isStrided() const {
+    return Access == STRIDED;
+  }
+
+  bool isUniform() const {
+    return Access == UNIFORM;
+  }
+
+  bool isNonStrided() const {
+    return Access == NONSTRIDED;
+  }
+
+  bool isMasked() const {
+    assert(!(IsMasked && isUniform()) &&
+           "Uniform access cannot be predicated");
+    return IsMasked;
+  }
+
+  bool isReversed() const {
+    assert(isStrided() &&
+           "Cannot get reversed stride from non-strided access");
+    return StridedInfo.IsReversed;
+  }
+
+  int getStride() const {
+    assert(isStrided() &&
+           "Cannot get stride from non-strided access");
+    return StridedInfo.Stride;
+  }
+
+  Type *getIndexType() const {
+    assert(isNonStrided() &&
+           "Cannot get index type of non-gather/scatter access");
+    return NonStridedInfo.IndexType;
+  }
+
+  bool isSignedIndex() const {
+    assert(isNonStrided() && "Expecting a non-strided access");
+    return NonStridedInfo.IsSignedIndex;
+  }
+};
+
 /// \brief This pass provides access to the codegen interfaces that are needed
 /// for IR-level transformations.
 class TargetTransformInfo {
@@ -599,9 +710,32 @@ public:
   /// \return The size of a cache line in bytes.
   unsigned getCacheLineSize() const;
 
+  /// The possible cache levels
+  enum class CacheLevel {
+    L1D,   // The L1 data cache
+    L2D,   // The L2 data cache
+
+    // We currently do not model L3 caches, as their sizes differ widely between
+    // microarchitectures. Also, we currently do not have a use for L3 cache
+    // size modeling yet.
+  };
+
+  /// \return The size of the cache level in bytes, if available.
+  llvm::Optional<unsigned> getCacheSize(CacheLevel Level) const;
+
+  /// \return The associativity of the cache level, if available.
+  llvm::Optional<unsigned> getCacheAssociativity(CacheLevel Level) const;
+
   /// \return How much before a load we should place the prefetch instruction.
   /// This is currently measured in number of instructions.
   unsigned getPrefetchDistance() const;
+
+  /// \return The width of the largest possible register supported by the target
+  /// architecture.  This is an upper bound rather than its actual width. The
+  /// lower bound (returned by getRegisterBitWidth) is the more common question
+  /// to ask but for cases when a transform is only safe when the register is
+  /// smaller than X, this function should be used.
+  unsigned getRegisterBitWidthUpperBound(bool Vector) const;
 
   /// \return Some HW prefetchers can handle accesses up to a certain constant
   /// stride.  This is the minimum stride in bytes where it makes sense to start
@@ -663,6 +797,12 @@ public:
   /// \return The cost of Load and Store instructions.
   int getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
                       unsigned AddressSpace, const Instruction *I = nullptr) const;
+
+  // \return The cost of Load and Store instructions for
+  // a memory access pattern described by Info.
+  unsigned getVectorMemoryOpCost(unsigned Opcode, Type *Src, Value *Ptr,
+                                 unsigned Alignment, unsigned AddressSpace,
+                                 const MemAccessInfo &Info, Instruction *I) const;
 
   /// \return The cost of masked Load and Store instructions.
   int getMaskedMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
@@ -760,6 +900,15 @@ public:
   Value *getOrCreateResultFromMemIntrinsic(IntrinsicInst *Inst,
                                            Type *ExpectedType) const;
 
+  /// \returns True if the target has instructions for a load/store with
+  /// an access pattern described by Info.
+  /// \param Ty is the result (load) or operand (store) type of the
+  /// memory operation.
+  /// \param Info is a struct that describes the memory access
+  /// (strided,gather,uniform)
+  bool hasVectorMemoryOp(unsigned Opcode, Type *Ty, 
+                         const MemAccessInfo &Info) const;
+
   /// \returns The type to use in a loop expansion of a memcpy call.
   Type *getMemcpyLoopLoweringType(LLVMContext &Context, Value *Length,
                                   unsigned SrcAlign, unsigned DestAlign) const;
@@ -786,6 +935,16 @@ public:
   /// purposes.
   bool areInlineCompatible(const Function *Caller,
                            const Function *Callee) const;
+  /// \returns True if the target can efficiently support vectorized non-unit
+  //           strides.
+  bool canVectorizeNonUnitStrides(bool forceFixedWidth = false) const;
+
+  /// \returns True if the target can efficiently handle store->loads
+  /// even when forwarding is prevented by the address not being a multiple
+  /// of the VF. For vector architectures with predication and unaligned
+  /// memory access, the benefit of vectorization may still outweigh
+  /// the cost for lack of store-load forwarding.
+  bool vectorizePreventedSLForwarding(void) const;
 
   /// \returns The bitwidth of the largest vector type that should be used to
   /// load/store in the given address space.
@@ -821,10 +980,12 @@ public:
 
   /// Flags describing the kind of vector reduction.
   struct ReductionFlags {
-    ReductionFlags() : IsMaxOp(false), IsSigned(false), NoNaN(false) {}
+    ReductionFlags()
+        : IsMaxOp(false), IsSigned(false), NoNaN(false), IsOrdered(false) {}
     bool IsMaxOp;  ///< If the op a min/max kind, true if it's a max operation.
     bool IsSigned; ///< Whether the operation is a signed int reduction.
     bool NoNaN;    ///< If op is an fp min/max, whether NaNs may be present.
+    bool IsOrdered; ///< True if the reduction is an ordered/strict reduction.
   };
 
   /// \returns True if the target wants to handle the given reduction idiom in
@@ -835,6 +996,11 @@ public:
   /// \returns True if the target wants to expand the given reduction intrinsic
   /// into a shuffle sequence.
   bool shouldExpandReduction(const IntrinsicInst *II) const;
+
+  /// \returns True if the target can handle the reduction.
+  bool canReduceInVector(unsigned Opcode, Type *ScalarTy,
+                         ReductionFlags Flags) const;
+
   /// @}
 
 private:
@@ -931,7 +1097,10 @@ public:
   virtual bool shouldConsiderAddressTypePromotion(
       const Instruction &I, bool &AllowPromotionWithoutCommonHeader) = 0;
   virtual unsigned getCacheLineSize() = 0;
+  virtual llvm::Optional<unsigned> getCacheSize(CacheLevel Level) = 0;
+  virtual llvm::Optional<unsigned> getCacheAssociativity(CacheLevel Level) = 0;
   virtual unsigned getPrefetchDistance() = 0;
+  virtual unsigned getRegisterBitWidthUpperBound(bool Vector) = 0;
   virtual unsigned getMinPrefetchStride() = 0;
   virtual unsigned getMaxPrefetchIterationsAhead() = 0;
   virtual unsigned getMaxInterleaveFactor(unsigned VF) = 0;
@@ -954,6 +1123,11 @@ public:
                                  unsigned Index) = 0;
   virtual int getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
                               unsigned AddressSpace, const Instruction *I) = 0;
+  virtual unsigned getVectorMemoryOpCost(unsigned Opcode, Type *Src, Value *Ptr,
+                                         unsigned Alignment,
+                                         unsigned AddressSpace,
+                                         const MemAccessInfo &Info,
+                                         Instruction *I) = 0;
   virtual int getMaskedMemoryOpCost(unsigned Opcode, Type *Src,
                                     unsigned Alignment,
                                     unsigned AddressSpace) = 0;
@@ -983,14 +1157,22 @@ public:
   virtual unsigned getAtomicMemIntrinsicMaxElementSize() const = 0;
   virtual Value *getOrCreateResultFromMemIntrinsic(IntrinsicInst *Inst,
                                                    Type *ExpectedType) = 0;
+
+  virtual bool hasVectorMemoryOp(unsigned Opcode, Type *Ty,
+                                 const MemAccessInfo &Info) = 0;
+
   virtual Type *getMemcpyLoopLoweringType(LLVMContext &Context, Value *Length,
                                           unsigned SrcAlign,
                                           unsigned DestAlign) const = 0;
   virtual void getMemcpyLoopResidualLoweringType(
       SmallVectorImpl<Type *> &OpsOut, LLVMContext &Context,
       unsigned RemainingBytes, unsigned SrcAlign, unsigned DestAlign) const = 0;
+
   virtual bool areInlineCompatible(const Function *Caller,
                                    const Function *Callee) const = 0;
+
+  virtual bool canVectorizeNonUnitStrides(bool forceFixedWidth) = 0;
+  virtual bool vectorizePreventedSLForwarding(void) = 0;
   virtual unsigned getLoadStoreVecRegBitWidth(unsigned AddrSpace) const = 0;
   virtual bool isLegalToVectorizeLoad(LoadInst *LI) const = 0;
   virtual bool isLegalToVectorizeStore(StoreInst *SI) const = 0;
@@ -1009,6 +1191,8 @@ public:
   virtual bool useReductionIntrinsic(unsigned Opcode, Type *Ty,
                                      ReductionFlags) const = 0;
   virtual bool shouldExpandReduction(const IntrinsicInst *II) const = 0;
+  virtual bool canReduceInVector(unsigned Opcode, Type *ScalarTy,
+                                 ReductionFlags Flags) const = 0;
 };
 
 template <typename T>
@@ -1191,6 +1375,10 @@ public:
   unsigned getRegisterBitWidth(bool Vector) const override {
     return Impl.getRegisterBitWidth(Vector);
   }
+  unsigned getRegisterBitWidthUpperBound(bool Vector) override {
+    return Impl.getRegisterBitWidthUpperBound(Vector);
+  }
+
   unsigned getMinVectorRegisterBitWidth() override {
     return Impl.getMinVectorRegisterBitWidth();
   }
@@ -1201,6 +1389,12 @@ public:
   }
   unsigned getCacheLineSize() override {
     return Impl.getCacheLineSize();
+  }
+  llvm::Optional<unsigned> getCacheSize(CacheLevel Level) override {
+    return Impl.getCacheSize(Level);
+  }
+  llvm::Optional<unsigned> getCacheAssociativity(CacheLevel Level) override {
+    return Impl.getCacheAssociativity(Level);
   }
   unsigned getPrefetchDistance() override { return Impl.getPrefetchDistance(); }
   unsigned getMinPrefetchStride() override {
@@ -1250,6 +1444,13 @@ public:
   int getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
                       unsigned AddressSpace, const Instruction *I) override {
     return Impl.getMemoryOpCost(Opcode, Src, Alignment, AddressSpace, I);
+  }
+  unsigned getVectorMemoryOpCost(unsigned Opcode, Type *Src, Value *Ptr,
+                                 unsigned Alignment, unsigned AddressSpace,
+                                 const MemAccessInfo &Info,
+                                 Instruction *I) override {
+    return Impl.getVectorMemoryOpCost(Opcode, Src, Ptr, Alignment, AddressSpace,
+                                      Info, I);
   }
   int getMaskedMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
                             unsigned AddressSpace) override {
@@ -1305,6 +1506,12 @@ public:
                                            Type *ExpectedType) override {
     return Impl.getOrCreateResultFromMemIntrinsic(Inst, ExpectedType);
   }
+
+  bool hasVectorMemoryOp(unsigned Opcode, Type *Ty,
+                         const MemAccessInfo &Info) override {
+    return Impl.hasVectorMemoryOp(Opcode, Ty, Info);
+  }
+
   Type *getMemcpyLoopLoweringType(LLVMContext &Context, Value *Length,
                                   unsigned SrcAlign,
                                   unsigned DestAlign) const override {
@@ -1318,10 +1525,20 @@ public:
     Impl.getMemcpyLoopResidualLoweringType(OpsOut, Context, RemainingBytes,
                                            SrcAlign, DestAlign);
   }
+
   bool areInlineCompatible(const Function *Caller,
                            const Function *Callee) const override {
     return Impl.areInlineCompatible(Caller, Callee);
   }
+
+  bool canVectorizeNonUnitStrides(bool forceFixedWidth = false) override {
+    return Impl.canVectorizeNonUnitStrides(forceFixedWidth);
+  }
+
+  bool vectorizePreventedSLForwarding(void) override {
+    return Impl.vectorizePreventedSLForwarding();
+  }
+
   unsigned getLoadStoreVecRegBitWidth(unsigned AddrSpace) const override {
     return Impl.getLoadStoreVecRegBitWidth(AddrSpace);
   }
@@ -1359,6 +1576,10 @@ public:
   }
   bool shouldExpandReduction(const IntrinsicInst *II) const override {
     return Impl.shouldExpandReduction(II);
+  }
+  bool canReduceInVector(unsigned Opcode, Type *ScalarTy,
+                         ReductionFlags Flags) const override {
+    return Impl.canReduceInVector(Opcode, ScalarTy, Flags);
   }
 };
 

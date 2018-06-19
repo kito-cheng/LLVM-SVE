@@ -557,9 +557,38 @@ CodeGenIntrinsic::CodeGenIntrinsic(Record *R) {
         TargetPrefix + ".'!");
   }
 
-  // Parse the list of return types.
+  // Collate a list of overloaded types.
   std::vector<MVT::SimpleValueType> OverloadedVTs;
   ListInit *TypeList = R->getValueAsListInit("RetTypes");
+  for (unsigned i = 0, e = TypeList->size(); i != e; ++i) {
+    Record *TyEl = TypeList->getElementAsRecord(i);
+    assert(TyEl->isSubClassOf("LLVMType") && "Expected a type!");
+
+    if (!TyEl->isSubClassOf("LLVMMatchType")) {
+      MVT::SimpleValueType VT = getValueType(TyEl->getValueAsDef("VT"));
+      if (MVT(VT).isOverloaded()) {
+        OverloadedVTs.push_back(VT);
+        isOverloaded = true;
+      }
+    }
+  }
+
+  TypeList = R->getValueAsListInit("ParamTypes");
+  for (unsigned i = 0, e = TypeList->size(); i != e; ++i) {
+    Record *TyEl = TypeList->getElementAsRecord(i);
+    assert(TyEl->isSubClassOf("LLVMType") && "Expected a type!");
+
+    if (!TyEl->isSubClassOf("LLVMMatchType")) {
+      MVT::SimpleValueType VT = getValueType(TyEl->getValueAsDef("VT"));
+      if (MVT(VT).isOverloaded()) {
+        OverloadedVTs.push_back(VT);
+        isOverloaded = true;
+      }
+    }
+  }
+
+  // Parse the list of return types.
+  TypeList = R->getValueAsListInit("RetTypes");
   for (unsigned i = 0, e = TypeList->size(); i != e; ++i) {
     Record *TyEl = TypeList->getElementAsRecord(i);
     assert(TyEl->isSubClassOf("LLVMType") && "Expected a type!");
@@ -578,10 +607,6 @@ CodeGenIntrinsic::CodeGenIntrinsic(Record *R) {
              "Expected iAny or vAny type");
     } else {
       VT = getValueType(TyEl->getValueAsDef("VT"));
-    }
-    if (MVT(VT).isOverloaded()) {
-      OverloadedVTs.push_back(VT);
-      isOverloaded = true;
     }
 
     // Reject invalid types.
@@ -611,12 +636,8 @@ CodeGenIntrinsic::CodeGenIntrinsic(Record *R) {
                !TyEl->isSubClassOf("LLVMVectorSameWidth")) ||
               VT == MVT::iAny || VT == MVT::vAny) &&
              "Expected iAny or vAny type");
-    } else
+    } else {
       VT = getValueType(TyEl->getValueAsDef("VT"));
-
-    if (MVT(VT).isOverloaded()) {
-      OverloadedVTs.push_back(VT);
-      isOverloaded = true;
     }
 
     // Reject invalid types.

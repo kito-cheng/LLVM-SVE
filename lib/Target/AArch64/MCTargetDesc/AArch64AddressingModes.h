@@ -213,7 +213,8 @@ static inline uint64_t ror(uint64_t elt, unsigned size) {
 static inline bool processLogicalImmediate(uint64_t Imm, unsigned RegSize,
                                            uint64_t &Encoding) {
   if (Imm == 0ULL || Imm == ~0ULL ||
-      (RegSize != 64 && (Imm >> RegSize != 0 || Imm == ~0U)))
+      (RegSize != 64 &&
+       (Imm >> RegSize != 0 || Imm == (~0ULL >> (64 - RegSize)))))
     return false;
 
   // First, determine the element size.
@@ -751,6 +752,60 @@ static inline uint64_t decodeAdvSIMDModImmType12(uint8_t Imm) {
   if (Imm & 0x02) EncVal |= 0x0002000000000000ULL;
   if (Imm & 0x01) EncVal |= 0x0001000000000000ULL;
   return (EncVal << 32) | EncVal;
+}
+
+/// Returns true if Imm is the concatenation of a repeating pattern of type T.
+template <typename T>
+static inline bool isSVEMaskOfIdenticalElements(int64_t Imm) {
+  union {
+    int64_t Whole;
+    T Parts[sizeof(int64_t)/sizeof(T)];
+  } Vec { Imm };
+
+  bool MatchingElements = true;
+  for (auto &Elem : Vec.Parts)
+    MatchingElements &= (Elem == Vec.Parts[0]);
+
+  return MatchingElements;
+}
+
+/// Returns true if Imm is valid for CPY/DUP.
+static inline bool isSVECpyImm(int64_t Imm) {
+  return (int8_t(Imm) == Imm) || (int16_t(Imm & ~0xff) == Imm);
+}
+
+/// Returns true if Imm is valid for CPY/DUP that operates on byte element.
+/// NOTE: This is identical to isSVECpyImm when Imm is correct sign extended by
+/// I am required when you cannot guarantee this to be the case.
+static inline bool isSVECpyImmByte(int64_t Imm) {
+  return (uint8_t(Imm) == Imm) || (int8_t(Imm) == Imm);
+}
+
+/// Return true if Imm is valid for DUPM and has no single CPY/DUP equivalent.
+static inline bool isSVEMoveMaskPreferredLogicalImmediate(int64_t Imm) {
+  union {
+    int64_t D;
+    int32_t S[2];
+    int16_t H[4];
+    int8_t  B[8];
+  } Vec = { Imm };
+
+  if (isSVECpyImm(Vec.D))
+    return false;
+
+  if (isSVEMaskOfIdenticalElements<int32_t>(Imm) &&
+      isSVECpyImm(Vec.S[0]))
+    return false;
+
+  if (isSVEMaskOfIdenticalElements<int16_t>(Imm) &&
+      isSVECpyImm(Vec.H[0]))
+    return false;
+
+  if (isSVEMaskOfIdenticalElements<int8_t>(Imm) &&
+      isSVECpyImm(Vec.B[0]))
+    return false;
+
+  return isLogicalImmediate(Vec.D, 64);
 }
 
 inline static bool isAnyMOVZMovAlias(uint64_t Value, int RegWidth) {

@@ -98,13 +98,20 @@ Value *FindAvailableLoadedValue(LoadInst *Load,
                                 unsigned *NumScanedInst = nullptr);
 
 /// Scan backwards to see if we have the value of the given pointer available
-/// locally within a small number of instructions.
+/// locally within a small number of instructions. This method comes in a
+/// 'masked' and an 'unmasked' form, where the latter is the simplified form
+/// and just calls the 'masked' form with an 'all true' mask, and an 'undef'
+/// passthru value.
 ///
 /// You can use this function to scan across multiple blocks: after you call
 /// this function, if ScanFrom points at the beginning of the block, it's safe
 /// to continue scanning the predecessors.
 ///
 /// \param Ptr The pointer we want the load and store to originate from.
+/// \param Mask The mask used for the load or store, or nullptr if the operation
+/// is unmasked.
+/// \param Passthru The passthru value specifying the expected 'false' lanes in
+/// the vector.
 /// \param AccessTy The access type of the pointer.
 /// \param AtLeastAtomic Are we looking for at-least an atomic load/store ? In
 /// case it is false, we can return an atomic or non-atomic load or store. In
@@ -120,11 +127,19 @@ Value *FindAvailableLoadedValue(LoadInst *Load,
 /// location in memory, as opposed to the value operand of a store.
 ///
 /// \returns The found value, or nullptr if no value is found.
+Value *FindAvailablePtrMaskedLoadStore(Value *Ptr, Value *Mask, Value *Passthru,
+                                       Type *AccessTy, bool AtLeastAtomic,
+                                       BasicBlock *ScanBB,
+                                       BasicBlock::iterator &ScanFrom,
+                                       unsigned MaxInstsToScan,
+                                       AliasAnalysis *AA, bool *IsLoad,
+                                       unsigned *NumScanedInst);
+
 Value *FindAvailablePtrLoadStore(Value *Ptr, Type *AccessTy, bool AtLeastAtomic,
                                  BasicBlock *ScanBB,
                                  BasicBlock::iterator &ScanFrom,
                                  unsigned MaxInstsToScan, AliasAnalysis *AA,
                                  bool *IsLoad, unsigned *NumScanedInst);
-}
 
+} // namespace llvm
 #endif

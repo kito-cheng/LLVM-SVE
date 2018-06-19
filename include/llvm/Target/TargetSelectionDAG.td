@@ -238,6 +238,15 @@ def SDTMaskedScatter: SDTypeProfile<1, 3, [       // masked scatter
 def SDTVecShuffle : SDTypeProfile<1, 2, [
   SDTCisSameAs<0, 1>, SDTCisSameAs<1, 2>
 ]>;
+def SDTVecShuffleVar : SDTypeProfile<1, 3, [
+  SDTCisSameAs<0, 1>, SDTCisSameAs<1, 2>, SDTCisInt<3>
+]>;
+def SDTSplatVector : SDTypeProfile<1, 1, [
+  SDTCisVec<0>
+]>;
+def SDTSeriesVector : SDTypeProfile<1, 2, [
+  SDTCisVec<0>,  SDTCisSameAs<1, 2>, SDTCisInt<2>
+]>;
 def SDTVecExtract : SDTypeProfile<1, 2, [   // vector extract
   SDTCisEltOfVec<0, 1>, SDTCisPtrTy<2>
 ]>;
@@ -250,6 +259,9 @@ def SDTSubVecExtract : SDTypeProfile<1, 2, [// subvector extract
 ]>;
 def SDTSubVecInsert : SDTypeProfile<1, 3, [ // subvector insert
   SDTCisSubVecOfVec<2, 1>, SDTCisSameAs<0,1>, SDTCisInt<3>
+]>;
+def SDTVecElementCount : SDTypeProfile<1, 1, [ // vector element count
+  SDTCisInt<0>, SDTCisVT<1, OtherVT>
 ]>;
 
 def SDTPrefetch : SDTypeProfile<0, 4, [     // prefetch
@@ -278,6 +290,14 @@ def SDTAtomicLoad : SDTypeProfile<1, 1, [
 
 def SDTConvertOp : SDTypeProfile<1, 5, [ //cvtss, su, us, uu, ff, fs, fu, sf, su
   SDTCisVT<2, OtherVT>, SDTCisVT<3, OtherVT>, SDTCisPtrTy<4>, SDTCisPtrTy<5>
+]>;
+
+def SDTPropFirstZero : SDTypeProfile<1, 2, [
+  SDTCisSameAs<0,1>, SDTCisSameAs<0, 2>, SDTCisVec<0>
+]>;
+
+def SDTTestVector : SDTypeProfile<1, 2, [
+  SDTCisInt<0>, SDTCisVec<1>, SDTCisSameAs<1, 2>
 ]>;
 
 class SDCallSeqStart<list<SDTypeConstraint> constraints> :
@@ -335,7 +355,9 @@ def fpimm      : SDNode<"ISD::ConstantFP", SDTFPLeaf  , [], "ConstantFPSDNode">;
 def vt         : SDNode<"ISD::VALUETYPE" , SDTOther   , [], "VTSDNode">;
 def bb         : SDNode<"ISD::BasicBlock", SDTOther   , [], "BasicBlockSDNode">;
 def cond       : SDNode<"ISD::CONDCODE"  , SDTOther   , [], "CondCodeSDNode">;
+def testcond   : SDNode<"ISD::TESTCODE"  , SDTOther   , [], "TestCodeSDNode">;
 def undef      : SDNode<"ISD::UNDEF"     , SDTUNDEF   , []>;
+def vscale     : SDNode<"ISD::VSCALE"    , SDTIntUnaryOp, []>;
 def globaladdr : SDNode<"ISD::GlobalAddress",         SDTPtrLeaf, [],
                         "GlobalAddressSDNode">;
 def tglobaladdr : SDNode<"ISD::TargetGlobalAddress",  SDTPtrLeaf, [],
@@ -549,9 +571,13 @@ def ist        : SDNode<"ISD::STORE"      , SDTIStore,
                         [SDNPHasChain, SDNPMayStore, SDNPMemOperand]>;
 
 def vector_shuffle : SDNode<"ISD::VECTOR_SHUFFLE", SDTVecShuffle, []>;
+def vector_shuffle_var : SDNode<"ISD::VECTOR_SHUFFLE_VAR",
+                                SDTVecShuffleVar, []>;
+def series_vector : SDNode<"ISD::SERIES_VECTOR", SDTSeriesVector, []>;
 def build_vector : SDNode<"ISD::BUILD_VECTOR", SDTypeProfile<1, -1, []>, []>;
 def scalar_to_vector : SDNode<"ISD::SCALAR_TO_VECTOR", SDTypeProfile<1, 1, []>,
                               []>;
+def splat_vector : SDNode<"ISD::SPLAT_VECTOR", SDTSplatVector, []>;
 
 // vector_extract/vector_insert are deprecated. extractelt/insertelt
 // are preferred.
@@ -588,6 +614,8 @@ def SDT_assertext : SDTypeProfile<1, 1,
 def assertsext : SDNode<"ISD::AssertSext", SDT_assertext>;
 def assertzext : SDNode<"ISD::AssertZext", SDT_assertext>;
 
+def prop_first_zero : SDNode<"ISD::PROPAGATE_FIRST_ZERO", SDTPropFirstZero, []>;
+def test_vector : SDNode<"ISD::TEST_VECTOR", SDTTestVector, []>;
 
 //===----------------------------------------------------------------------===//
 // Selection DAG Condition Codes
@@ -727,6 +755,10 @@ def sextload  : PatFrag<(ops node:$ptr), (unindexedload node:$ptr), [{
 def zextload  : PatFrag<(ops node:$ptr), (unindexedload node:$ptr), [{
   return cast<LoadSDNode>(N)->getExtensionType() == ISD::ZEXTLOAD;
 }]>;
+def azextload : PatFrag<(ops node:$ptr), (unindexedload node:$ptr), [{
+  auto Type = cast<LoadSDNode>(N)->getExtensionType();
+  return Type == ISD::ZEXTLOAD || Type == ISD::EXTLOAD;
+}]>;
 
 def extloadi1  : PatFrag<(ops node:$ptr), (extload node:$ptr), [{
   return cast<LoadSDNode>(N)->getMemoryVT() == MVT::i1;
@@ -770,6 +802,19 @@ def zextloadi16 : PatFrag<(ops node:$ptr), (zextload node:$ptr), [{
   return cast<LoadSDNode>(N)->getMemoryVT() == MVT::i16;
 }]>;
 def zextloadi32 : PatFrag<(ops node:$ptr), (zextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT() == MVT::i32;
+}]>;
+
+def azextloadi1 : PatFrag<(ops node:$ptr), (azextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT() == MVT::i1;
+}]>;
+def azextloadi8 : PatFrag<(ops node:$ptr), (azextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT() == MVT::i8;
+}]>;
+def azextloadi16 : PatFrag<(ops node:$ptr), (azextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT() == MVT::i16;
+}]>;
+def azextloadi32 : PatFrag<(ops node:$ptr), (azextload node:$ptr), [{
   return cast<LoadSDNode>(N)->getMemoryVT() == MVT::i32;
 }]>;
 
@@ -818,6 +863,19 @@ def zextloadvi32 : PatFrag<(ops node:$ptr), (zextload node:$ptr), [{
   return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;
 }]>;
 
+def azextloadvi1  : PatFrag<(ops node:$ptr), (azextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i1;
+}]>;
+def azextloadvi8  : PatFrag<(ops node:$ptr), (azextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i8;
+}]>;
+def azextloadvi16 : PatFrag<(ops node:$ptr), (azextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i16;
+}]>;
+def azextloadvi32 : PatFrag<(ops node:$ptr), (azextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;
+}]>;
+
 // store fragments.
 def unindexedstore : PatFrag<(ops node:$val, node:$ptr),
                              (st node:$val, node:$ptr), [{
@@ -854,16 +912,18 @@ def truncstoref64 : PatFrag<(ops node:$val, node:$ptr),
   return cast<StoreSDNode>(N)->getMemoryVT() == MVT::f64;
 }]>;
 
+def truncstorevi1 : PatFrag<(ops node:$val, node:$ptr),
+                            (truncstore node:$val, node:$ptr), [{
+  return cast<StoreSDNode>(N)->getMemoryVT().getScalarType() == MVT::i1;
+}]>;
 def truncstorevi8 : PatFrag<(ops node:$val, node:$ptr),
                             (truncstore node:$val, node:$ptr), [{
   return cast<StoreSDNode>(N)->getMemoryVT().getScalarType() == MVT::i8;
 }]>;
-
 def truncstorevi16 : PatFrag<(ops node:$val, node:$ptr),
                              (truncstore node:$val, node:$ptr), [{
   return cast<StoreSDNode>(N)->getMemoryVT().getScalarType() == MVT::i16;
 }]>;
-
 def truncstorevi32 : PatFrag<(ops node:$val, node:$ptr),
                              (truncstore node:$val, node:$ptr), [{
   return cast<StoreSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;

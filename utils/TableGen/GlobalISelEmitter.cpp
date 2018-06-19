@@ -2115,10 +2115,11 @@ void GlobalISelEmitter::run(raw_ostream &OS) {
   // for the matcher to reference them with.
   std::vector<LLTCodeGen> TypeObjects = {
       LLT::scalar(8),      LLT::scalar(16),     LLT::scalar(32),
-      LLT::scalar(64),     LLT::scalar(80),     LLT::vector(8, 1),
-      LLT::vector(16, 1),  LLT::vector(32, 1),  LLT::vector(64, 1),
-      LLT::vector(8, 8),   LLT::vector(16, 8),  LLT::vector(32, 8),
-      LLT::vector(64, 8),  LLT::vector(4, 16),  LLT::vector(8, 16),
+      LLT::scalar(64),     LLT::scalar(80),     LLT::vector(2, 1),
+      LLT::vector(4, 1),   LLT::vector(8, 1),   LLT::vector(16, 1),
+      LLT::vector(32, 1),  LLT::vector(64, 1),  LLT::vector(8, 8),
+      LLT::vector(16, 8),  LLT::vector(32, 8),  LLT::vector(64, 8),
+      LLT::vector(2, 16),  LLT::vector(4, 16),  LLT::vector(8, 16),
       LLT::vector(16, 16), LLT::vector(32, 16), LLT::vector(2, 32),
       LLT::vector(4, 32),  LLT::vector(8, 32),  LLT::vector(16, 32),
       LLT::vector(2, 64),  LLT::vector(4, 64),  LLT::vector(8, 64),

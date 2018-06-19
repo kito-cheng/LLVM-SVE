@@ -1,5 +1,5 @@
-; RUN: llc -verify-machineinstrs -mtriple=aarch64-none-linux-gnu -disable-post-ra < %s | FileCheck %s
-; RUN: llc -verify-machineinstrs -mtriple=arm64-apple-ios -disable-fp-elim -disable-post-ra < %s | FileCheck %s --check-prefix=CHECK-MACHO
+; RUN: llc -verify-machineinstrs -mtriple=aarch64-none-linux-gnu -disable-post-ra -aarch64-sve-postvec=false < %s | FileCheck %s
+; RUN: llc -verify-machineinstrs -mtriple=arm64-apple-ios -disable-fp-elim -disable-post-ra -aarch64-sve-postvec=false < %s | FileCheck %s --check-prefix=CHECK-MACHO
 
 ; This test aims to check basic correctness of frame layout &
 ; frame access code. There are 8 functions in this test file,

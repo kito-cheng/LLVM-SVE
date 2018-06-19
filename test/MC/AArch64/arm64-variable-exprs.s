@@ -1,4 +1,5 @@
 // RUN: llvm-mc -triple arm64-apple-darwin10 %s -filetype=obj -o %t.o
+// RUN: llvm-mc -triple arm64-apple-darwin10 -mattr=+sve %s -filetype=obj -o %t.o
 
 .data
 

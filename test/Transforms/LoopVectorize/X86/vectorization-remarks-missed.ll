@@ -41,10 +41,19 @@
 ;   }
 ;   return k;
 ; }
-; CHECK: remark: source.cpp:29:7: loop not vectorized: control flow cannot be substituted for a select
+; CHECK: remark: source.cpp:27:3: loop not vectorized: control flow cannot be substituted for a select
 ; CHECK: remark: source.cpp:27:3: loop not vectorized
 
 ; YAML:       --- !Analysis
+; YAML-NEXT: Pass:            loop-vectorize
+; YAML-NEXT: Name:            CantComputeNumberOfIterations
+; YAML-NEXT: DebugLoc:        { File: source.cpp, Line: 4, Column: 5 }
+; YAML-NEXT: Function:        _Z4testPii
+; YAML-NEXT: Args:
+; YAML-NEXT:   - String:          'loop not vectorized: '
+; YAML-NEXT:   - String:          could not determine number of loop iterations
+; YAML-NEXT: ...
+; YAML-NEXT: --- !Analysis
 ; YAML-NEXT: Pass:            loop-vectorize
 ; YAML-NEXT: Name:            CantComputeNumberOfIterations
 ; YAML-NEXT: DebugLoc:        { File: source.cpp, Line: 4, Column: 5 }
@@ -101,11 +110,22 @@
 ; YAML-NEXT: --- !Analysis
 ; YAML-NEXT: Pass:            loop-vectorize
 ; YAML-NEXT: Name:            NoCFGForSelect
-; YAML-NEXT: DebugLoc:        { File: source.cpp, Line: 29, Column: 7 }
+; YAML-NEXT: DebugLoc:        { File: source.cpp, Line: 27, Column: 3 }
 ; YAML-NEXT: Function:        test_multiple_failures
 ; YAML-NEXT: Args:
 ; YAML-NEXT:   - String:          'loop not vectorized: '
 ; YAML-NEXT:   - String:          control flow cannot be substituted for a select
+; YAML-NEXT:   - Cmp:             br
+; YAML-NEXT:     DebugLoc:        { File: source.cpp, Line: 28, Column: 9 }
+; YAML-NEXT: ...
+; YAML-NEXT: --- !Analysis
+; YAML-NEXT: Pass:            loop-vectorize
+; YAML-NEXT: Name:            CantComputeNumberOfIterations
+; YAML-NEXT: DebugLoc:        { File: source.cpp, Line: 27, Column: 3 }
+; YAML-NEXT: Function:        test_multiple_failures
+; YAML-NEXT: Args:
+; YAML-NEXT:   - String:          'loop not vectorized: '
+; YAML-NEXT:   - String:          could not determine number of loop iterations
 ; YAML-NEXT: ...
 ; YAML-NEXT: --- !Analysis
 ; YAML-NEXT: Pass:            loop-vectorize

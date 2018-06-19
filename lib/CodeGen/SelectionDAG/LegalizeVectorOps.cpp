@@ -109,6 +109,7 @@ class VectorLegalizer {
   SDValue ExpandBITREVERSE(SDValue Op);
   SDValue ExpandCTLZ(SDValue Op);
   SDValue ExpandCTTZ_ZERO_UNDEF(SDValue Op);
+  SDValue ExpandVECTOR_SHUFFLE_VAR(SDValue Op);
 
   /// \brief Implements vector promotion.
   ///
@@ -331,6 +332,7 @@ SDValue VectorLegalizer::LegalizeOp(SDValue Op) {
   case ISD::ANY_EXTEND_VECTOR_INREG:
   case ISD::SIGN_EXTEND_VECTOR_INREG:
   case ISD::ZERO_EXTEND_VECTOR_INREG:
+  case ISD::VECTOR_SHUFFLE_VAR:
   case ISD::SMIN:
   case ISD::SMAX:
   case ISD::UMIN:
@@ -449,7 +451,9 @@ SDValue VectorLegalizer::PromoteINT_TO_FP(SDValue Op) {
   // Increase the bitwidth of the element to the next pow-of-two
   // (which is greater than 8 bits).
 
-  EVT NVT = VT.widenIntegerVectorElementType(*DAG.getContext());
+  EVT NVT = TLI.getTypeToPromoteTo(Op.getOpcode(), VT.getSimpleVT());
+  if (NVT.getVectorNumElements() != VT.getVectorNumElements())
+    NVT = VT.widenIntegerVectorElementType(*DAG.getContext());
   assert(NVT.isSimple() && "Promoting to a non-simple vector type!");
   SDLoc dl(Op);
   SmallVector<SDValue, 4> Operands(Op.getNumOperands());
@@ -673,6 +677,70 @@ SDValue VectorLegalizer::ExpandStore(SDValue Op) {
   return TF;
 }
 
+SDValue VectorLegalizer::ExpandVECTOR_SHUFFLE_VAR(SDValue Op) {
+  SDLoc dl(Op);
+  SDValue Op0 = Op.getOperand(0);
+  SDValue Op1 = Op.getOperand(1);
+  SDValue Mask = Op.getOperand(2);
+  EVT VT = Op.getValueType();
+
+  if (VT.isScalableVector()) {
+    unsigned VTNumElts = VT.getVectorNumElements();
+    unsigned VTEltSize = VT.getVectorElementType().getSizeInBits();
+    unsigned NewVTNumElts;
+    unsigned NewVTEltSize;
+    // Loop through vector types looking for vectors with the same number of
+    // elements as VT but with more bits per element
+    for (MVT NewVT : MVT::integer_scalable_vector_valuetypes()) {
+      NewVTNumElts = NewVT.getVectorNumElements();
+      NewVTEltSize = NewVT.getVectorElementType().getSizeInBits();
+      if (VTNumElts == NewVTNumElts && NewVTEltSize > VTEltSize) {
+        // Use this expanded vector type if it is legal for VECTOR_SHUFFLE_VAR
+        if (TLI.isOperationLegalOrCustom(ISD::VECTOR_SHUFFLE_VAR, NewVT) &&
+                                                       TLI.isTypeLegal(NewVT)) {
+          SDValue ExpandedPred0 = DAG.getNode(ISD::ZERO_EXTEND, dl, NewVT, Op0);
+          SDValue ExpandedPred1 = DAG.getNode(ISD::ZERO_EXTEND, dl, NewVT, Op1);
+          SDValue ExpandedShuffle = DAG.getNode(ISD::VECTOR_SHUFFLE_VAR, dl,
+                                                NewVT, ExpandedPred0,
+                                                ExpandedPred1, Mask);
+          SDValue TruncatedShuffle = DAG.getNode(ISD::TRUNCATE, dl,
+                                                 Op.getValueType(),
+                                                 ExpandedShuffle);
+          return TruncatedShuffle;
+        }
+      }
+    }
+    llvm_unreachable("Unable to find legal expanded vector type for shuffle!");
+  }
+
+  assert(!VT.isScalableVector() &&
+         "This code can't handle scalable vectors");
+  EVT SrcVT = Op0.getValueType();
+  EVT MaskVT = Mask.getValueType();
+  EVT SrcEltVT = SrcVT.getVectorElementType();
+  EVT MaskEltVT = MaskVT.getVectorElementType();
+  assert(SrcEltVT == VT.getVectorElementType() && "Mismatched element types");
+  unsigned SrcNumElts = SrcVT.getVectorNumElements();
+  unsigned MaskNumElts = MaskVT.getVectorNumElements();
+  EVT IdxVT = TLI.getVectorIdxTy(DAG.getDataLayout());
+  SmallVector<SDValue, 16> Ops(MaskNumElts);
+  for (unsigned i = 0; i < MaskNumElts; ++i) {
+    SDValue IN = DAG.getConstant(i, dl, IdxVT);
+    SDValue Idx = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl, MaskEltVT, Mask, IN);
+    Idx = DAG.getSExtOrTrunc(Idx, dl, IdxVT);
+    SDValue SafeIdx = DAG.getNode(ISD::UREM, dl, IdxVT,
+                                  Idx, DAG.getConstant(SrcNumElts, dl, IdxVT));
+    SDValue I0 = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl,
+                             SrcEltVT, Op0, SafeIdx);
+    SDValue I1 = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl,
+                             SrcEltVT, Op1, SafeIdx);
+    Ops[i] = DAG.getSelectCC(dl, Idx, SafeIdx, I0, I1, ISD::SETEQ);
+  }
+  SDValue NewOp = DAG.getNode(ISD::BUILD_VECTOR, dl, VT, Ops);
+  AddLegalizedOperand(Op, NewOp);
+  return NewOp;
+}
+
 SDValue VectorLegalizer::Expand(SDValue Op) {
   switch (Op->getOpcode()) {
   case ISD::SIGN_EXTEND_INREG:
@@ -704,6 +772,8 @@ SDValue VectorLegalizer::Expand(SDValue Op) {
     return ExpandCTLZ(Op);
   case ISD::CTTZ_ZERO_UNDEF:
     return ExpandCTTZ_ZERO_UNDEF(Op);
+  case ISD::VECTOR_SHUFFLE_VAR:
+    return ExpandVECTOR_SHUFFLE_VAR(Op);
   default:
     return DAG.UnrollVectorOp(Op.getNode());
   }

@@ -1,4 +1,5 @@
 // RUN: not llvm-mc -triple aarch64-none-linux-gnu < %s 2>&1 | FileCheck --check-prefix=CHECK --check-prefix=CHECK-ERROR %s
+// RUN: not llvm-mc -triple aarch64-none-linux-gnu -mattr=+sve < %s 2>&1 | FileCheck --check-prefix=CHECK --check-prefix=CHECK-ERROR %s
 
 bar:
         fred .req x5

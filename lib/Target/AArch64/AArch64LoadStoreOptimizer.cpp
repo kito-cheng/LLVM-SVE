@@ -538,7 +538,7 @@ static bool isPairedLdSt(const MachineInstr &MI) {
   }
 }
 
-static const MachineOperand &getLdStRegOp(const MachineInstr &MI,
+static MachineOperand &getLdStRegOp(MachineInstr &MI,
                                           unsigned PairedRegOp = 0) {
   assert(PairedRegOp < 2 && "Unexpected register operand idx.");
   unsigned Idx = isPairedLdSt(MI) ? PairedRegOp : 0;
@@ -607,6 +607,16 @@ AArch64LoadStoreOpt::mergeNarrowZeroStores(MachineBasicBlock::iterator I,
   const MachineOperand &BaseRegOp =
       MergeForward ? getLdStBaseOp(*MergeMI) : getLdStBaseOp(*I);
 
+  if (!MergeForward) {
+    // Add KILL MI for any registers killed by MergeMI
+    for (MachineOperand &MO : MergeMI->operands())
+      if (MO.isReg() && MO.isKill()) {
+        BuildMI(*MergeMI->getParent(), MergeMI, MergeMI->getDebugLoc(),
+                TII->get(TargetOpcode::KILL), MO.getReg())
+               .addReg(MO.getReg());
+        MO.setIsKill(false);
+      }
+  }
   // Which register is Rt and which is Rt2 depends on the offset order.
   MachineInstr *RtMI;
   if (getLdStOffsetOp(*I).getImm() ==
@@ -750,6 +760,8 @@ AArch64LoadStoreOpt::mergePairedInsns(MachineBasicBlock::iterator I,
 
   (void)MIB;
 
+  // FIXME: Do we need/want to copy the mem operands from the source
+  //        instructions? Probably. What uses them after this?
   DEBUG(dbgs() << "Creating pair load/store. Replacing instructions:\n    ");
   DEBUG(I->print(dbgs()));
   DEBUG(dbgs() << "    ");
@@ -811,6 +823,10 @@ AArch64LoadStoreOpt::promoteLoadFromStore(MachineBasicBlock::iterator LoadI,
   unsigned LdRt = getLdStRegOp(*LoadI).getReg();
   const MachineOperand &StMO = getLdStRegOp(*StoreI);
   unsigned StRt = getLdStRegOp(*StoreI).getReg();
+  // We're adding an additional use of StRt, so the isKill flag may need to move
+  // down to this new use.  Removal of isKill from the store is delayed so the
+  // DEBUG() printed below reflects the prior state correctly
+  bool StRtIsKill = getLdStRegOp(*StoreI).isKill();
   bool IsStoreXReg = TRI->getRegClass(AArch64::GPR64RegClassID)->contains(StRt);
 
   assert((IsStoreXReg ||
@@ -833,6 +849,8 @@ AArch64LoadStoreOpt::promoteLoadFromStore(MachineBasicBlock::iterator LoadI,
       DEBUG(LoadI->print(dbgs()));
       DEBUG(dbgs() << "\n");
       LoadI->eraseFromParent();
+      if (StRtIsKill)
+        getLdStRegOp(*StoreI).setIsKill(false);
       return NextI;
     }
     // Replace the load with a mov if the load and store are in the same size.
@@ -906,6 +924,15 @@ AArch64LoadStoreOpt::promoteLoadFromStore(MachineBasicBlock::iterator LoadI,
   DEBUG(StoreI->print(dbgs()));
   DEBUG(dbgs() << "    ");
   DEBUG(LoadI->print(dbgs()));
+
+  // Clear isKill for the StoreI Reg we reused above.  It may have an implicit
+  // definition of the x-form that needs isKill clearing as well, so the easiest
+  // thing is to look over all operands
+  for (MachineOperand &MO : StoreI->operands()) {
+    if (MO.isReg() && MO.isKill() && TRI->regsOverlap(MO.getReg(), StRt))
+      MO.setIsKill(false);
+  }
+
   DEBUG(dbgs() << "  with instructions:\n    ");
   DEBUG(StoreI->print(dbgs()));
   DEBUG(dbgs() << "    ");

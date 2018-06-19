@@ -292,8 +292,12 @@ bool LoopVersioningLICM::legalLoopMemoryAccesses() {
     if (AS.isForwardingAliasSet())
       continue;
     // With MustAlias its not worth adding runtime bound check.
-    if (AS.isMustAlias())
+    // If we only alias with ourselves (single pointer in the set), then
+    // it's safe to proceed.
+    if (AS.isMustAlias() && (AS.getRefCount() > 1)) {
+      DEBUG(dbgs() << "    Alias set with MustAlias attribute\n");
       return false;
+    }
     Value *SomePtr = AS.begin()->getValue();
     bool TypeCheck = true;
     // Check for Mod & MayAlias

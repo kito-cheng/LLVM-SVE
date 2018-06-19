@@ -1377,3 +1377,23 @@ entry:
   %1 = select <4 x i1> %0, <4 x float> <float 0xFFFFFFFFE0000000, float 0xFFFFFFFFE0000000, float 0xFFFFFFFFE0000000, float 0xFFFFFFFFE0000000>, <4 x float> zeroinitializer
   ret <4 x float> %1
 }
+
+define <n x 4 x i32> @test1_scalable_vec(<n x 4 x i32> %a, <n x 4 x i32> %b) {
+; CHECK-LABEL: @test1_scalable_vec(
+; CHECK-NEXT:    ret <n x 4 x i32> %b
+;
+  %1 = insertelement <n x 4 x i1> undef, i1 false, i32 0
+  %false = shufflevector <n x 4 x i1> %1, <n x 4 x i1> undef, <n x 4 x i32> zeroinitializer
+  %sel = select <n x 4 x i1> %false, <n x 4 x i32> %a, <n x 4 x i32> %b
+  ret <n x 4 x i32> %sel
+}
+
+define <n x 4 x i32> @test2_scalable_vec(<n x 4 x i32> %a, <n x 4 x i32> %b) {
+; CHECK-LABEL: @test2_scalable_vec(
+; CHECK-NEXT:    ret <n x 4 x i32> %a
+;
+  %1 = insertelement <n x 4 x i1> undef, i1 true, i32 0
+  %true = shufflevector <n x 4 x i1> %1, <n x 4 x i1> undef, <n x 4 x i32> zeroinitializer
+  %sel = select <n x 4 x i1> %true, <n x 4 x i32> %a, <n x 4 x i32> %b
+  ret <n x 4 x i32> %sel
+}

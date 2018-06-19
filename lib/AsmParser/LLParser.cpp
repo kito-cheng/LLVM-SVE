@@ -644,11 +644,18 @@ bool LLParser::ParseNamedMetadata() {
   NamedMDNode *NMD = M->getOrInsertNamedMetadata(Name);
   if (Lex.getKind() != lltok::rbrace)
     do {
-      if (ParseToken(lltok::exclaim, "Expected '!' here"))
-        return true;
-
       MDNode *N = nullptr;
-      if (ParseMDNodeID(N)) return true;
+      // Parse DIExpressions inline as a special case. They are still MDNodes,
+      // so they can still appear in named metadata. Remove this logic if they
+      // become plain Metadata.
+      if (Lex.getKind() == lltok::MetadataVar &&
+          Lex.getStrVal() == "DIExpression") {
+        if (ParseDIExpression(N, /*IsDistinct=*/false))
+          return true;
+      } else if (ParseToken(lltok::exclaim, "Expected '!' here") ||
+                 ParseMDNodeID(N)) {
+        return true;
+      }
       NMD->addOperand(N);
     } while (EatIfPresent(lltok::comma));
 
@@ -1663,6 +1670,7 @@ void LLParser::ParseOptionalDLLStorageClass(unsigned &Res) {
 ///   ::= 'arm_apcscc'
 ///   ::= 'arm_aapcscc'
 ///   ::= 'arm_aapcs_vfpcc'
+///   ::= 'aarch64_vector_pcs'
 ///   ::= 'msp430_intrcc'
 ///   ::= 'avr_intrcc'
 ///   ::= 'avr_signalcc'
@@ -1704,6 +1712,7 @@ bool LLParser::ParseOptionalCallingConv(unsigned &CC) {
   case lltok::kw_arm_apcscc:     CC = CallingConv::ARM_APCS; break;
   case lltok::kw_arm_aapcscc:    CC = CallingConv::ARM_AAPCS; break;
   case lltok::kw_arm_aapcs_vfpcc:CC = CallingConv::ARM_AAPCS_VFP; break;
+  case lltok::kw_aarch64_vector_pcs:CC = CallingConv::AArch64_VectorCall; break;
   case lltok::kw_msp430_intrcc:  CC = CallingConv::MSP430_INTR; break;
   case lltok::kw_avr_intrcc:     CC = CallingConv::AVR_INTR; break;
   case lltok::kw_avr_signalcc:   CC = CallingConv::AVR_SIGNAL; break;
@@ -2467,10 +2476,22 @@ bool LLParser::ParseStructBody(SmallVectorImpl<Type*> &Body) {
 ///   Type
 ///     ::= '[' APSINTVAL 'x' Types ']'
 ///     ::= '<' APSINTVAL 'x' Types '>'
+///     ::= '<' 'n' 'x' APSINTVAL 'x' Types '>'
 bool LLParser::ParseArrayVectorType(Type *&Result, bool isVector) {
+  bool Scalable = false; /* assume fixed length vectors */
+
+  if (isVector && Lex.getKind() == lltok::kw_n) {
+    Lex.Lex(); // consume the 'n'
+
+    if (ParseToken(lltok::kw_x, "expected 'x' after scalable vector specifier"))
+      return true;
+
+    Scalable = true; /* scalable vector */
+  }
+
   if (Lex.getKind() != lltok::APSInt || Lex.getAPSIntVal().isSigned() ||
       Lex.getAPSIntVal().getBitWidth() > 64)
-    return TokError("expected number in address space");
+    return TokError("expected scalable vector or number in address space");
 
   LocTy SizeLoc = Lex.getLoc();
   uint64_t Size = Lex.getAPSIntVal().getZExtValue();
@@ -2494,7 +2515,7 @@ bool LLParser::ParseArrayVectorType(Type *&Result, bool isVector) {
       return Error(SizeLoc, "size too large for vector");
     if (!VectorType::isValidElementType(EltTy))
       return Error(TypeLoc, "invalid vector element type");
-    Result = VectorType::get(EltTy, unsigned(Size));
+    Result = VectorType::get(EltTy, unsigned(Size), Scalable);
   } else {
     if (!ArrayType::isValidElementType(EltTy))
       return Error(TypeLoc, "invalid array element type");
@@ -2783,7 +2804,9 @@ bool LLParser::ParseValID(ValID &ID, PerFunctionState *PFS) {
     ID.Kind = ValID::t_Constant;
     break;
   case lltok::kw_null: ID.Kind = ValID::t_Null; break;
+  case lltok::kw_stepvector: ID.Kind = ValID::t_StepVector; break;
   case lltok::kw_undef: ID.Kind = ValID::t_Undef; break;
+  case lltok::kw_vscale: ID.Kind = ValID::t_VScale; break;
   case lltok::kw_zeroinitializer: ID.Kind = ValID::t_Zero; break;
   case lltok::kw_none: ID.Kind = ValID::t_None; break;
 
@@ -3430,6 +3453,39 @@ template <class FieldTy> struct MDFieldImpl {
       : Val(std::move(Default)), Seen(false) {}
 };
 
+/// Structure to represent an optional metadata field that
+/// can be of either type (A or B) and encapsulates the
+/// MD<typeofA>Field and MD<typeofB>Field structs, so not
+/// to reimplement the specifics for representing each Field.
+template <class FieldTypeA, class FieldTypeB> struct MDEitherFieldImpl {
+  typedef MDEitherFieldImpl<FieldTypeA, FieldTypeB> ImplTy;
+  FieldTypeA A;
+  FieldTypeB B;
+  bool Seen;
+
+  enum {
+    IsInvalid = 0,
+    IsTypeA = 1,
+    IsTypeB = 2
+  } WhatIs;
+
+  void assign(FieldTypeA A) {
+    Seen = true;
+    this->A = std::move(A);
+    WhatIs = IsTypeA;
+  }
+
+  void assign(FieldTypeB B) {
+    Seen = true;
+    this->B = std::move(B);
+    WhatIs = IsTypeB;
+  }
+
+  explicit MDEitherFieldImpl(FieldTypeA DefaultA, FieldTypeB DefaultB)
+      : A(std::move(DefaultA)), B(std::move(DefaultB)), Seen(false),
+        WhatIs(IsInvalid) {}
+};
+
 struct MDUnsignedField : public MDFieldImpl<uint64_t> {
   uint64_t Max;
 
@@ -3518,6 +3574,26 @@ struct MDFieldList : public MDFieldImpl<SmallVector<Metadata *, 4>> {
 struct ChecksumKindField : public MDFieldImpl<DIFile::ChecksumKind> {
   ChecksumKindField() : ImplTy(DIFile::CSK_None) {}
   ChecksumKindField(DIFile::ChecksumKind CSKind) : ImplTy(CSKind) {}
+};
+
+struct MDSignedOrMDField : MDEitherFieldImpl<MDSignedField, MDField> {
+  MDSignedOrMDField(int64_t Default = 0, bool AllowNull = true)
+      : ImplTy(MDSignedField(Default), MDField(AllowNull)) {}
+
+  MDSignedOrMDField(int64_t Default, int64_t Min, int64_t Max,
+                    bool AllowNull = true)
+      : ImplTy(MDSignedField(Default, Min, Max), MDField(AllowNull)) {}
+
+  bool isMDSignedField() const { return WhatIs == IsTypeA; }
+  bool isMDField() const { return WhatIs == IsTypeB; }
+  int64_t getMDSignedValue() const {
+    assert(isMDSignedField() && "Wrong field type");
+    return A.Val;
+  }
+  Metadata *getMDFieldValue() const {
+    assert(isMDField() && "Wrong field type");
+    return B.Val;
+  }
 };
 
 } // end anonymous namespace
@@ -3774,6 +3850,29 @@ bool LLParser::ParseMDField(LocTy Loc, StringRef Name, MDField &Result) {
 }
 
 template <>
+bool LLParser::ParseMDField(LocTy Loc, StringRef Name,
+                            MDSignedOrMDField &Result) {
+  // Try to parse a signed int
+  if (Lex.getKind() == lltok::APSInt) {
+    MDSignedField Res = Result.A;
+    if (!ParseMDField(Loc, Name, Res)) {
+      Result.assign(Res);
+      return false;
+    }
+    return true;
+  }
+
+  // Otherwise, try to parse as an MDField
+  MDField Res = Result.B;
+  if (!ParseMDField(Loc, Name, Res)) {
+    Result.assign(Res);
+    return false;
+  }
+
+  return true;
+}
+
+template <>
 bool LLParser::ParseMDField(LocTy Loc, StringRef Name, MDStringField &Result) {
   LocTy ValueLoc = Lex.getLoc();
   std::string S;
@@ -3872,8 +3971,8 @@ bool LLParser::ParseSpecializedMDNode(MDNode *&N, bool IsDistinct) {
     return ParseMDField(#NAME, NAME);
 #define PARSE_MD_FIELDS()                                                      \
   VISIT_MD_FIELDS(DECLARE_FIELD, DECLARE_FIELD)                                \
+  LocTy ClosingLoc;                                                            \
   do {                                                                         \
-    LocTy ClosingLoc;                                                          \
     if (ParseMDFieldsImpl([&]() -> bool {                                      \
       VISIT_MD_FIELDS(PARSE_MD_FIELD, PARSE_MD_FIELD)                          \
       return TokError(Twine("invalid field '") + Lex.getStrVal() + "'");       \
@@ -3917,14 +4016,23 @@ bool LLParser::ParseGenericDINode(MDNode *&Result, bool IsDistinct) {
 
 /// ParseDISubrange:
 ///   ::= !DISubrange(count: 30, lowerBound: 2)
+///   ::= !DISubrange(count: !node, lowerBound: 2)
 bool LLParser::ParseDISubrange(MDNode *&Result, bool IsDistinct) {
 #define VISIT_MD_FIELDS(OPTIONAL, REQUIRED)                                    \
-  REQUIRED(count, MDSignedField, (-1, -1, INT64_MAX));                         \
+  REQUIRED(count, MDSignedOrMDField, (-1, -1, INT64_MAX, false));              \
   OPTIONAL(lowerBound, MDSignedField, );
   PARSE_MD_FIELDS();
 #undef VISIT_MD_FIELDS
 
-  Result = GET_OR_DISTINCT(DISubrange, (Context, count.Val, lowerBound.Val));
+  if (count.isMDSignedField())
+    Result = GET_OR_DISTINCT(
+        DISubrange, (Context, count.getMDSignedValue(), lowerBound.Val));
+  else if (count.isMDField()) {
+    Result = GET_OR_DISTINCT(
+        DISubrange, (Context, count.getMDFieldValue(), lowerBound.Val));
+  } else
+    return true;
+
   return false;
 }
 
@@ -4238,12 +4346,14 @@ bool LLParser::ParseDIModule(MDNode *&Result, bool IsDistinct) {
   REQUIRED(name, MDStringField, );                                             \
   OPTIONAL(configMacros, MDStringField, );                                     \
   OPTIONAL(includePath, MDStringField, );                                      \
-  OPTIONAL(isysroot, MDStringField, );
+  OPTIONAL(isysroot, MDStringField, );                                         \
+  OPTIONAL(file, MDField, );                                                   \
+  OPTIONAL(line, LineField, );
   PARSE_MD_FIELDS();
 #undef VISIT_MD_FIELDS
-
   Result = GET_OR_DISTINCT(DIModule, (Context, scope.Val, name.Val,
-                           configMacros.Val, includePath.Val, isysroot.Val));
+                           configMacros.Val, includePath.Val, isysroot.Val,
+                           file.Val, line.Val));
   return false;
 }
 
@@ -4579,11 +4689,21 @@ bool LLParser::ConvertValIDToValue(Type *Ty, ValID &ID, Value *&V,
       return Error(ID.Loc, "null must be a pointer type");
     V = ConstantPointerNull::get(cast<PointerType>(Ty));
     return false;
+  case ValID::t_StepVector:
+    if (!Ty->isVectorTy() || !Ty->getVectorElementType()->isIntegerTy())
+      return Error(ID.Loc, "stepvector must be an integer vector type");
+    V = StepVector::get(Ty);
+    return false;
   case ValID::t_Undef:
     // FIXME: LabelTy should not be a first-class type.
     if (!Ty->isFirstClassType() || Ty->isLabelTy())
       return Error(ID.Loc, "invalid type for undef constant");
     V = UndefValue::get(Ty);
+    return false;
+  case ValID::t_VScale:
+    if (!Ty->isIntegerTy())
+      return Error(ID.Loc, "vscale must be an integer type");
+    V = VScale::get(Ty);
     return false;
   case ValID::t_EmptyArray:
     if (!Ty->isArrayTy() || cast<ArrayType>(Ty)->getNumElements() != 0)
@@ -4641,6 +4761,7 @@ bool LLParser::parseConstantValue(Type *Ty, Constant *&C) {
   case ValID::t_APSInt:
   case ValID::t_APFloat:
   case ValID::t_Undef:
+  case ValID::t_VScale:
   case ValID::t_Constant:
   case ValID::t_ConstantStruct:
   case ValID::t_PackedConstantStruct: {

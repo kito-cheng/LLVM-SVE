@@ -1,0 +1,50 @@
+# RUN: llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -disassemble -mattr=+sve < %s | FileCheck %s
+# RUN: llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -disassemble -mattr=-sve 2>&1 < %s | FileCheck --check-prefix=CHECK-ERROR  %s
+0xb7,0x6d,0xc8,0x04
+# CHECK: mls     z23.d, p3/m, z13.d, z8.d // encoding: [0xb7,0x6d,0xc8,0x04]
+# CHECK-ERROR: invalid instruction encoding
+0xb7,0x6d,0x08,0x04
+# CHECK: mls     z23.b, p3/m, z13.b, z8.b // encoding: [0xb7,0x6d,0x08,0x04]
+# CHECK-ERROR: invalid instruction encoding
+0xff,0x7f,0x1f,0x04
+# CHECK: mls     z31.b, p7/m, z31.b, z31.b // encoding: [0xff,0x7f,0x1f,0x04]
+# CHECK-ERROR: invalid instruction encoding
+0x55,0x75,0xd5,0x04
+# CHECK: mls     z21.d, p5/m, z10.d, z21.d // encoding: [0x55,0x75,0xd5,0x04]
+# CHECK-ERROR: invalid instruction encoding
+0x55,0x75,0x55,0x04
+# CHECK: mls     z21.h, p5/m, z10.h, z21.h // encoding: [0x55,0x75,0x55,0x04]
+# CHECK-ERROR: invalid instruction encoding
+0x00,0x60,0xc0,0x04
+# CHECK: mls     z0.d, p0/m, z0.d, z0.d // encoding: [0x00,0x60,0xc0,0x04]
+# CHECK-ERROR: invalid instruction encoding
+0xb7,0x6d,0x88,0x04
+# CHECK: mls     z23.s, p3/m, z13.s, z8.s // encoding: [0xb7,0x6d,0x88,0x04]
+# CHECK-ERROR: invalid instruction encoding
+0x55,0x75,0x95,0x04
+# CHECK: mls     z21.s, p5/m, z10.s, z21.s // encoding: [0x55,0x75,0x95,0x04]
+# CHECK-ERROR: invalid instruction encoding
+0x00,0x60,0x40,0x04
+# CHECK: mls     z0.h, p0/m, z0.h, z0.h // encoding: [0x00,0x60,0x40,0x04]
+# CHECK-ERROR: invalid instruction encoding
+0xb7,0x6d,0x48,0x04
+# CHECK: mls     z23.h, p3/m, z13.h, z8.h // encoding: [0xb7,0x6d,0x48,0x04]
+# CHECK-ERROR: invalid instruction encoding
+0xff,0x7f,0x9f,0x04
+# CHECK: mls     z31.s, p7/m, z31.s, z31.s // encoding: [0xff,0x7f,0x9f,0x04]
+# CHECK-ERROR: invalid instruction encoding
+0x00,0x60,0x00,0x04
+# CHECK: mls     z0.b, p0/m, z0.b, z0.b // encoding: [0x00,0x60,0x00,0x04]
+# CHECK-ERROR: invalid instruction encoding
+0xff,0x7f,0x5f,0x04
+# CHECK: mls     z31.h, p7/m, z31.h, z31.h // encoding: [0xff,0x7f,0x5f,0x04]
+# CHECK-ERROR: invalid instruction encoding
+0xff,0x7f,0xdf,0x04
+# CHECK: mls     z31.d, p7/m, z31.d, z31.d // encoding: [0xff,0x7f,0xdf,0x04]
+# CHECK-ERROR: invalid instruction encoding
+0x00,0x60,0x80,0x04
+# CHECK: mls     z0.s, p0/m, z0.s, z0.s // encoding: [0x00,0x60,0x80,0x04]
+# CHECK-ERROR: invalid instruction encoding
+0x55,0x75,0x15,0x04
+# CHECK: mls     z21.b, p5/m, z10.b, z21.b // encoding: [0x55,0x75,0x15,0x04]
+# CHECK-ERROR: invalid instruction encoding

@@ -71,6 +71,7 @@
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/ConstantRange.h"
 #include "llvm/IR/Constants.h"
@@ -3508,6 +3509,15 @@ const SCEV *ScalarEvolution::getUMinExpr(const SCEV *LHS,
 }
 
 const SCEV *ScalarEvolution::getSizeOfExpr(Type *IntTy, Type *AllocTy) {
+
+  auto *VTy = dyn_cast<VectorType>(AllocTy);
+  if (VTy && VTy->isScalable()) {
+    Constant *C = ConstantExpr::getElementCount(IntTy, UndefValue::get(VTy));
+    const SCEV *S = getMulExpr(getSCEV(C),
+                               getSizeOfExpr(IntTy, VTy->getElementType()));
+    return S;
+  }
+
   // We can bypass creating a target-independent
   // constant expression and then folding it back into a ConstantInt.
   // This is just a compile-time optimization.
@@ -5215,6 +5225,16 @@ ScalarEvolution::getRangeRef(const SCEV *S,
   }
 
   if (const SCEVUnknown *U = dyn_cast<SCEVUnknown>(S)) {
+    if (isa<VScale>(U->getValue())) {
+      auto MinBits = TTI.getRegisterBitWidth(true);
+      if (MinBits > 0) {
+        auto MaxBits = TTI.getRegisterBitWidthUpperBound(true);
+        auto LowerBound = APInt(BitWidth, 1);
+        auto UpperBound = APInt(BitWidth, (MaxBits / MinBits) + 1);
+        return setRange(U, SignHint, ConstantRange(LowerBound, UpperBound));
+      }
+    }
+
     // Check if the IR explicitly contains !range metadata.
     Optional<ConstantRange> MDRange = GetRangeFromMetadata(U->getValue());
     if (MDRange.hasValue())
@@ -10372,8 +10392,8 @@ ScalarEvolution::SCEVCallbackVH::SCEVCallbackVH(Value *V, ScalarEvolution *se)
 
 ScalarEvolution::ScalarEvolution(Function &F, TargetLibraryInfo &TLI,
                                  AssumptionCache &AC, DominatorTree &DT,
-                                 LoopInfo &LI)
-    : F(F), TLI(TLI), AC(AC), DT(DT), LI(LI),
+                                 LoopInfo &LI, TargetTransformInfo &TTI)
+    : F(F), TLI(TLI), AC(AC), DT(DT), LI(LI), TTI(TTI),
       CouldNotCompute(new SCEVCouldNotCompute()),
       WalkingBEDominatingConds(false), ProvingSplitPredicate(false),
       ValuesAtScopes(64), LoopDispositions(64), BlockDispositions(64),
@@ -10396,7 +10416,8 @@ ScalarEvolution::ScalarEvolution(Function &F, TargetLibraryInfo &TLI,
 
 ScalarEvolution::ScalarEvolution(ScalarEvolution &&Arg)
     : F(Arg.F), HasGuards(Arg.HasGuards), TLI(Arg.TLI), AC(Arg.AC), DT(Arg.DT),
-      LI(Arg.LI), CouldNotCompute(std::move(Arg.CouldNotCompute)),
+      LI(Arg.LI), TTI(Arg.TTI),
+      CouldNotCompute(std::move(Arg.CouldNotCompute)),
       ValueExprMap(std::move(Arg.ValueExprMap)),
       PendingLoopPredicates(std::move(Arg.PendingLoopPredicates)),
       WalkingBEDominatingConds(false), ProvingSplitPredicate(false),
@@ -10843,7 +10864,7 @@ void ScalarEvolution::forgetMemoizedResults(const SCEV *S) {
 
 void ScalarEvolution::verify() const {
   ScalarEvolution &SE = *const_cast<ScalarEvolution *>(this);
-  ScalarEvolution SE2(F, TLI, AC, DT, LI);
+  ScalarEvolution SE2(F, TLI, AC, DT, LI, TTI);
 
   SmallVector<Loop *, 8> LoopStack(LI.begin(), LI.end());
 
@@ -10931,7 +10952,8 @@ ScalarEvolution ScalarEvolutionAnalysis::run(Function &F,
   return ScalarEvolution(F, AM.getResult<TargetLibraryAnalysis>(F),
                          AM.getResult<AssumptionAnalysis>(F),
                          AM.getResult<DominatorTreeAnalysis>(F),
-                         AM.getResult<LoopAnalysis>(F));
+                         AM.getResult<LoopAnalysis>(F),
+                         AM.getResult<TargetIRAnalysis>(F));
 }
 
 PreservedAnalyses
@@ -10946,6 +10968,7 @@ INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
 INITIALIZE_PASS_DEPENDENCY(LoopInfoWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(TargetTransformInfoWrapperPass)
 INITIALIZE_PASS_END(ScalarEvolutionWrapperPass, "scalar-evolution",
                     "Scalar Evolution Analysis", false, true)
 char ScalarEvolutionWrapperPass::ID = 0;
@@ -10959,7 +10982,8 @@ bool ScalarEvolutionWrapperPass::runOnFunction(Function &F) {
       F, getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(),
       getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F),
       getAnalysis<DominatorTreeWrapperPass>().getDomTree(),
-      getAnalysis<LoopInfoWrapperPass>().getLoopInfo()));
+      getAnalysis<LoopInfoWrapperPass>().getLoopInfo(),
+      getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F)));
   return false;
 }
 
@@ -10982,6 +11006,7 @@ void ScalarEvolutionWrapperPass::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequiredTransitive<LoopInfoWrapperPass>();
   AU.addRequiredTransitive<DominatorTreeWrapperPass>();
   AU.addRequiredTransitive<TargetLibraryInfoWrapperPass>();
+  AU.addRequiredTransitive<TargetTransformInfoWrapperPass>();
 }
 
 const SCEVPredicate *ScalarEvolution::getEqualPredicate(const SCEV *LHS,

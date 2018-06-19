@@ -371,6 +371,13 @@ protected:
   /// LLVMTargetMachine provides standard regalloc passes for most targets.
   virtual void addOptimizedRegAlloc(FunctionPass *RegAllocPass);
 
+  /// addPostCoalesce - Add passes to the optimized register allocation pipeline
+  /// after coalescing is complete, but before further scheduling or register
+  /// allocation.
+  virtual bool addPostCoalesce() {
+    return false;
+  }
+
   /// addPreRewrite - Add passes to the optimized register allocation pipeline
   /// after register allocation is complete, but before virtual registers are
   /// rewritten to physical registers.

@@ -1,0 +1,38 @@
+// RUN: not llvm-mc -triple=aarch64 -show-encoding -mattr=+sve  2>&1 < %s| FileCheck %s
+
+// Immediate not compatible with encode/decode function.
+sqdech x25, w25, pow2, MUL #17
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: immediate must be an integer in range [1, 16]
+// CHECK-NEXT: sqdech x25, w25, pow2, MUL #17
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+// Source and Destination Registers must match
+sqdech x29, w30, pow2, MUL #1
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: operand must be 32-bit form of destination register
+// CHECK-NEXT: sqdech x29, w30, pow2, MUL #1
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+// Immediate not compatible with encode/decode function.
+sqdech x29, pow2, MUL #-1
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: immediate must be an integer in range [1, 16]
+// CHECK-NEXT: sqdech x29, pow2, MUL #-1
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+// Immediate not compatible with encode/decode function.
+sqdech x17, pow2, MUL #17
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: immediate must be an integer in range [1, 16]
+// CHECK-NEXT: sqdech x17, pow2, MUL #17
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+// Immediate not compatible with encode/decode function.
+sqdech z8.h, pow2, MUL #-1
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: immediate must be an integer in range [1, 16]
+// CHECK-NEXT: sqdech z8.h, pow2, MUL #-1
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+// Immediate not compatible with encode/decode function.
+sqdech z3.h, pow2, MUL #17
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: immediate must be an integer in range [1, 16]
+// CHECK-NEXT: sqdech z3.h, pow2, MUL #17
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+

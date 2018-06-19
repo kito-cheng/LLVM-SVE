@@ -1,4 +1,6 @@
 ; RUN: llvm-mc -triple arm64-apple-darwin -show-encoding < %s | FileCheck %s
+; RUN: llvm-mc -triple arm64-apple-darwin -mattr=+sve -show-encoding < %s | FileCheck %s
+
 .text
 ; parseOperand check
 ; CHECK: add sp, sp, #32             ; encoding: [0xff,0x83,0x00,0x91]

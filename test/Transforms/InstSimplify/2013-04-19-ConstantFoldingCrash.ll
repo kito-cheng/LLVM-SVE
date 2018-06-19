@@ -7,3 +7,10 @@ define <2 x i64> @test1() {
   %a = and <2 x i64> undef, bitcast (<4 x i32> <i32 undef, i32 undef, i32 undef, i32 2147483647> to <2 x i64>)
   ret <2 x i64> %a
 }
+
+define <n x 4 x i32> @test2() {
+  %a = bitcast <n x 4 x float> shufflevector (<n x 4 x float> insertelement (<n x 4 x float> undef, float -0.000000e+00, i32 0),
+                                              <n x 4 x float> undef,
+                                              <n x 4 x i32> zeroinitializer) to <n x 4 x i32>
+  ret <n x 4 x i32> %a
+}

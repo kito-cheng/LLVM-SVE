@@ -41,6 +41,7 @@ void llvm::initializeCodeGen(PassRegistry &Registry) {
   initializeImplicitNullChecksPass(Registry);
   initializeIndirectBrExpandPassPass(Registry);
   initializeInterleavedAccessPass(Registry);
+  initializeInitStackRegionPassPass(Registry);
   initializeLiveDebugValuesPass(Registry);
   initializeLiveDebugVariablesPass(Registry);
   initializeLiveIntervalsPass(Registry);
@@ -79,7 +80,7 @@ void llvm::initializeCodeGen(PassRegistry &Registry) {
   initializePreISelIntrinsicLoweringLegacyPassPass(Registry);
   initializeProcessImplicitDefsPass(Registry);
   initializeRABasicPass(Registry);
-  initializeRAFastPass(Registry);
+  initializeRegAllocFastPass(Registry);
   initializeRAGreedyPass(Registry);
   initializeRegisterCoalescerPass(Registry);
   initializeRenameIndependentSubregsPass(Registry);

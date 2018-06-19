@@ -1,4 +1,4 @@
-; RUN: llc < %s -mtriple=arm64-apple-ios7.0.0 | FileCheck %s
+; RUN: llc < %s -mtriple=arm64-apple-ios7.0.0 -aarch64-sve-postvec=false | FileCheck %s
 
 target datalayout = "e-m:o-i64:64-i128:128-n32:64-S128"
 

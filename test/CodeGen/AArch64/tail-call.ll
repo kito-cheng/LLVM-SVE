@@ -60,7 +60,7 @@ define fastcc void @caller_to16_from8([8 x i32], i64 %a) {
   tail call fastcc void @callee_stack16([8 x i32] undef, i64 42, i64 2)
 
 ; CHECK: stp {{x[0-9]+}}, {{x[0-9]+}}, [sp, #16]!
-; CHECK-NEXT: b callee_stack16
+; CHECK: b callee_stack16
   ret void
 }
 
@@ -89,7 +89,7 @@ define fastcc void @caller_to16_from16([8 x i32], i64 %a, i64 %b) {
 
 ; CHECK: ldp {{x[0-9]+}}, {{x[0-9]+}}, [sp, #16]
 ; CHECK: stp {{x[0-9]+}}, {{x[0-9]+}}, [sp, #16]!
-; CHECK-NEXT: b callee_stack16
+; CHECK: b callee_stack16
 }
 
 

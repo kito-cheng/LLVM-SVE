@@ -1,4 +1,5 @@
 // RUN: llvm-mc -triple=arm64-eabi < %s | FileCheck %s
+// RUN: llvm-mc -triple=arm64-eabi -mattr=+sve < %s | FileCheck %s
 _foo:
         OBJECT .req x2
         mov x4, OBJECT

@@ -1,4 +1,5 @@
 ; RUN: llvm-mc -triple arm64-apple-darwin -mattr=crypto -show-encoding -output-asm-variant=1 < %s | FileCheck %s
+; RUN: llvm-mc -triple arm64-apple-darwin -mattr=crypto,+sve -show-encoding -output-asm-variant=1 < %s | FileCheck %s
 ; RUN: llvm-mc -triple arm64-apple-darwin -mattr='+crypto,+fuse-aes' -show-encoding -output-asm-variant=1 < %s | FileCheck %s
 
 foo:

@@ -4,6 +4,8 @@
 ; RUN: opt < %s -loop-vectorize -force-vector-width=1 -force-vector-interleave=2 -S | FileCheck %s --check-prefix=UNROLL-NO-VF
 ; RUN: opt < %s -loop-vectorize -force-vector-width=4 -force-vector-interleave=1 -S | FileCheck %s --check-prefix=SINK-AFTER
 ; RUN: opt < %s -loop-vectorize -force-vector-width=4 -force-vector-interleave=1 -S | FileCheck %s --check-prefix=NO-SINK-AFTER
+; The check below doesn't actually do real testing except to verify no crashes.
+; RUN: opt < %s -mtriple aarch64-linux-generic -march=aarch64 -mattr=+sve -O3 -disable-loop-vectorization -sve-loop-vectorize -force-vector-width=4 -force-scalable-vectorization -enable-non-consecutive-stride-ind-vars -disable-loop-unrolling -S
 
 target datalayout = "e-m:e-i64:64-i128:128-n32:64-S128"
 

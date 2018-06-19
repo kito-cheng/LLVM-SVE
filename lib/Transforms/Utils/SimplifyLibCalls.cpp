@@ -1014,6 +1014,27 @@ static Value *optimizeBinaryDoubleFP(CallInst *CI, IRBuilder<> &B) {
   return B.CreateFPExt(V, B.getDoubleTy());
 }
 
+// cabs(z) -> sqrt((creal(z)*creal(z)) + (cimag(z)*cimag(z)))
+Value *LibCallSimplifier::optimizeCAbs(CallInst *CI, IRBuilder<> &B) {
+  if (!CI->hasUnsafeAlgebra())
+    return nullptr;
+
+  // Propagate fast-math flags from the existing call to new instructions.
+  IRBuilder<>::FastMathFlagGuard Guard(B);
+  B.setFastMathFlags(CI->getFastMathFlags());
+
+  Value *Op = CI->getArgOperand(0);
+  Value *Real = B.CreateExtractValue(Op, 0, "real");
+  Value *Imag = B.CreateExtractValue(Op, 1, "imag");
+
+  Value *RealReal = B.CreateFMul(Real, Real);
+  Value *ImagImag = B.CreateFMul(Imag, Imag);
+
+  Function *FSqrt = Intrinsic::getDeclaration(CI->getModule(), Intrinsic::sqrt,
+                                              CI->getType());
+  return B.CreateCall(FSqrt, B.CreateFAdd(RealReal, ImagImag), "cabs");
+}
+
 Value *LibCallSimplifier::optimizeCos(CallInst *CI, IRBuilder<> &B) {
   Function *Callee = CI->getCalledFunction();
   Value *Ret = nullptr;
@@ -1169,15 +1190,34 @@ Value *LibCallSimplifier::optimizePow(CallInst *CI, IRBuilder<> &B) {
     return Sel;
   }
 
-  if (Op2C->isExactlyValue(1.0)) // pow(x, 1.0) -> x
-    return Op1;
-  if (Op2C->isExactlyValue(2.0)) // pow(x, 2.0) -> x*x
-    return B.CreateFMul(Op1, Op1, "pow2");
-  if (Op2C->isExactlyValue(-1.0)) // pow(x, -1.0) -> 1.0/x
-    return B.CreateFDiv(ConstantFP::get(CI->getType(), 1.0), Op1, "powrecip");
+  if (Op2C->isExactlyValue(-0.5) &&
+      hasUnaryFloatFn(TLI, Op2->getType(), LibFunc_sqrt, LibFunc_sqrtf,
+                      LibFunc_sqrtl) &&
+      hasUnaryFloatFn(TLI, Op2->getType(), LibFunc_fabs, LibFunc_fabsf,
+                      LibFunc_fabsl)) {
+    // Expand pow(x, -0.5) to (x == -infinity ? +0.0 : 1/fabs(sqrt(x))).
+    // This is faster than calling pow, and still handles negative zero
+    // and negative infinity correctly.
+    // TODO: In fast-math mode, this could be just 1/sqrt(x).
+    // TODO: In finite-only mode, this could be just 1/fabs(sqrt(x)).
+    Value *PositiveZero = ConstantFP::get(CI->getType(), 0.0);
+    Value *NegInf = ConstantFP::getInfinity(CI->getType(), true);
+    Value *Sqrt = emitUnaryFloatFnCall(Op1, "sqrt", B, Callee->getAttributes());
+    Value *FAbs =
+        emitUnaryFloatFnCall(Sqrt, "fabs", B, Callee->getAttributes());
+    Value *FDiv =
+        B.CreateFDiv(ConstantFP::get(CI->getType(), 1.0), FAbs, "powrecipsqrt");
+    Value *FCmp = B.CreateFCmpOEQ(Op1, NegInf);
+    Value *Sel = B.CreateSelect(FCmp, PositiveZero, FDiv);
+    return Sel;
+  }
+
+  SmallVector<double,5> SpecialCases = { -1.0, 1.0, 2.0, 3.0 };
+  bool IsSpecialCase = std::any_of(SpecialCases.begin(), SpecialCases.end(),
+                                   [Op2C](double d){ return Op2C->isExactlyValue(d); });
 
   // In -ffast-math, generate repeated fmul instead of generating pow(x, n).
-  if (CI->hasUnsafeAlgebra()) {
+  if (CI->hasUnsafeAlgebra() || IsSpecialCase) {
     APFloat V = abs(Op2C->getValueAPF());
     // We limit to a max of 7 fmul(s). Thus max exponent is 32.
     // This transformation applies to integer exponents only.
@@ -1204,7 +1244,8 @@ Value *LibCallSimplifier::optimizePow(CallInst *CI, IRBuilder<> &B) {
     if (Op2C->isNegative())
       FMul = B.CreateFDiv(ConstantFP::get(CI->getType(), 1.0), FMul);
     return FMul;
-  }
+  } else if (Op2C->isExactlyValue(4.0)) // pow(x, 4.0) -> x*x*x*x
+    return B.CreateFMul(B.CreateFMul(B.CreateFMul(Op1, Op1), Op1), Op1, "pow4");
 
   return nullptr;
 }
@@ -2219,6 +2260,10 @@ Value *LibCallSimplifier::optimizeCall(CallInst *CI) {
     case LibFunc_fmax:
     case LibFunc_fmaxl:
       return optimizeFMinFMax(CI, Builder);
+    case LibFunc_cabs:
+    case LibFunc_cabsf:
+    case LibFunc_cabsl:
+      return optimizeCAbs(CI, Builder);
     default:
       return nullptr;
     }

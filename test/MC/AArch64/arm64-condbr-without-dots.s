@@ -1,4 +1,5 @@
 // RUN: llvm-mc -triple arm64-apple-ios -o - %s | FileCheck %s
+// RUN: llvm-mc -triple arm64-apple-ios -mattr=+sve -o - %s | FileCheck %s
         
         beq lbl
         bne lbl

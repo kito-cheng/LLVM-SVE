@@ -700,6 +700,10 @@ void TargetPassConfig::addMachinePasses() {
   // Expand pseudo-instructions emitted by ISel.
   addPass(&ExpandISelPseudosID);
 
+  // [SVE] Always add the InitStackRegion pass
+  // because we need it for LocalStackSlotAllocation
+  addPass(&InitStackRegionID);
+
   // Add passes that optimize machine instructions in SSA form.
   if (getOptLevel() != CodeGenOpt::None) {
     addMachineSSAOptimization();
@@ -951,6 +955,9 @@ void TargetPassConfig::addOptimizedRegAlloc(FunctionPass *RegAllocPass) {
 
   addPass(&TwoAddressInstructionPassID, false);
   addPass(&RegisterCoalescerID);
+
+  // Allow targets to change the live ranges after coalescing
+  addPostCoalesce();
 
   // The machine scheduler may accidentally create disconnected components
   // when moving subregister definitions around, avoid this by splitting them to

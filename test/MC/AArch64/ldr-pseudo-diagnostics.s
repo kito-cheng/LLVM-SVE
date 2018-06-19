@@ -1,4 +1,5 @@
 //RUN: not llvm-mc -triple=aarch64-linux-gnu - < %s 2>&1 | FileCheck --check-prefix=CHECK-ERROR %s
+//RUN: not llvm-mc -triple=aarch64-linux-gnu -mattr=+sve - < %s 2>&1 | FileCheck --check-prefix=CHECK-ERROR %s
 
 // simple test
 .section a, "ax", @progbits

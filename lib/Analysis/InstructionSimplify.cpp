@@ -631,9 +631,8 @@ static Constant *stripAndComputeConstantOffsets(const DataLayout &DL, Value *&V,
   } while (Visited.insert(V).second);
 
   Constant *OffsetIntPtr = ConstantInt::get(IntPtrTy, Offset);
-  if (V->getType()->isVectorTy())
-    return ConstantVector::getSplat(V->getType()->getVectorNumElements(),
-                                    OffsetIntPtr);
+  if (auto *VTy = dyn_cast<VectorType>(V->getType()))
+    return ConstantVector::getSplat(VTy->getElementCount(), OffsetIntPtr);
   return OffsetIntPtr;
 }
 
@@ -1739,6 +1738,10 @@ static Value *SimplifyAndInst(Value *Op0, Value *Op1, const SimplifyQuery &Q,
   if (match(Op1, m_AllOnes()))
     return Op0;
 
+  // TODO: m_AllOnes needs to support scalable vectors
+  if (match(Op1, m_SplatVector(m_AllOnes())))
+    return Op0;
+
   // A & ~A  =  ~A & A  =  0
   if (match(Op0, m_Not(m_Specific(Op1))) ||
       match(Op1, m_Not(m_Specific(Op0))))
@@ -1841,6 +1844,10 @@ static Value *SimplifyOrInst(Value *Op0, Value *Op1, const SimplifyQuery &Q,
 
   // X | -1 = -1
   if (match(Op1, m_AllOnes()))
+    return Op1;
+
+  // TODO: m_AllOnes needs to support scalable vectors
+  if (match(Op1, m_SplatVector(m_AllOnes())))
     return Op1;
 
   // A | ~A  =  ~A | A  =  -1
@@ -3460,14 +3467,15 @@ static Value *SimplifyFCmpInst(unsigned Predicate, Value *LHS, Value *RHS,
         }
       }
     }
-    if (CFP->getValueAPF().isZero()) {
+    if (CFP->getValueAPF().isZero() ||
+        (CFP->getValueAPF().isNegative() && !CFP->getValueAPF().isNaN())) {
       switch (Pred) {
       case FCmpInst::FCMP_UGE:
         if (CannotBeOrderedLessThanZero(LHS, Q.TLI))
           return getTrue(RetTy);
         break;
       case FCmpInst::FCMP_OLT:
-        // X < 0
+        // X < 0 or X < -C
         if (CannotBeOrderedLessThanZero(LHS, Q.TLI))
           return getFalse(RetTy);
         break;
@@ -3739,6 +3747,10 @@ static Value *SimplifySelectInst(Value *CondVal, Value *TrueVal,
       return TrueVal;
     if (CB->isNullValue())
       return FalseVal;
+
+    // TODO: m_AllOnes needs to support scalable vectors
+    if (match(CB, m_SplatVector(m_AllOnes())))
+      return TrueVal;
   }
 
   // select C, X, X -> X
@@ -3783,9 +3795,9 @@ static Value *SimplifyGEPInst(Type *SrcTy, ArrayRef<Value *> Ops,
   Type *LastType = GetElementPtrInst::getIndexedType(SrcTy, Ops.slice(1));
   Type *GEPTy = PointerType::get(LastType, AS);
   if (VectorType *VT = dyn_cast<VectorType>(Ops[0]->getType()))
-    GEPTy = VectorType::get(GEPTy, VT->getNumElements());
+    GEPTy = VectorType::get(GEPTy, VT->getElementCount());
   else if (VectorType *VT = dyn_cast<VectorType>(Ops[1]->getType()))
-    GEPTy = VectorType::get(GEPTy, VT->getNumElements());
+    GEPTy = VectorType::get(GEPTy, VT->getElementCount());
 
   if (isa<UndefValue>(Ops[0]))
     return UndefValue::get(GEPTy);
@@ -4059,6 +4071,9 @@ Value *llvm::SimplifyCastInst(unsigned CastOpc, Value *Op, Type *Ty,
 static Value *foldIdentityShuffles(int DestElt, Value *Op0, Value *Op1,
                                    int MaskVal, Value *RootVec,
                                    unsigned MaxRecurse) {
+  if (Op0->getType()->getVectorIsScalable())
+    return nullptr;
+
   if (!MaxRecurse--)
     return nullptr;
 
@@ -4079,9 +4094,11 @@ static Value *foldIdentityShuffles(int DestElt, Value *Op0, Value *Op1,
   // If the source operand is a shuffle itself, look through it to find the
   // matching root vector.
   if (auto *SourceShuf = dyn_cast<ShuffleVectorInst>(SourceOp)) {
-    return foldIdentityShuffles(
-        DestElt, SourceShuf->getOperand(0), SourceShuf->getOperand(1),
-        SourceShuf->getMaskValue(RootElt), RootVec, MaxRecurse);
+    int Res;
+    SourceShuf->getMaskValue(RootElt, Res);
+    return foldIdentityShuffles(DestElt, SourceShuf->getOperand(0),
+                                SourceShuf->getOperand(1), Res, RootVec,
+                                MaxRecurse);
   }
 
   // TODO: Look through bitcasts? What if the bitcast changes the vector element
@@ -4104,7 +4121,7 @@ static Value *foldIdentityShuffles(int DestElt, Value *Op0, Value *Op1,
   return RootVec;
 }
 
-static Value *SimplifyShuffleVectorInst(Value *Op0, Value *Op1, Constant *Mask,
+static Value *SimplifyShuffleVectorInst(Value *Op0, Value *Op1, Value *Mask,
                                         Type *RetTy, const SimplifyQuery &Q,
                                         unsigned MaxRecurse) {
   if (isa<UndefValue>(Mask))
@@ -4113,6 +4130,9 @@ static Value *SimplifyShuffleVectorInst(Value *Op0, Value *Op1, Constant *Mask,
   Type *InVecTy = Op0->getType();
   unsigned MaskNumElts = Mask->getType()->getVectorNumElements();
   unsigned InVecNumElts = InVecTy->getVectorNumElements();
+
+  if (Mask->getType()->getVectorIsScalable())
+    return nullptr;
 
   SmallVector<int, 32> Indices;
   ShuffleVectorInst::getShuffleMask(Mask, Indices);
@@ -4139,8 +4159,9 @@ static Value *SimplifyShuffleVectorInst(Value *Op0, Value *Op1, Constant *Mask,
   auto *Op1Const = dyn_cast<Constant>(Op1);
 
   // If all operands are constant, constant fold the shuffle.
-  if (Op0Const && Op1Const)
-    return ConstantFoldShuffleVectorInstruction(Op0Const, Op1Const, Mask);
+  if (Op0Const && Op1Const && isa<Constant>(Mask))
+    return ConstantFoldShuffleVectorInstruction(Op0Const, Op1Const,
+                                                cast<Constant>(Mask));
 
   // Canonicalization: if only one input vector is constant, it shall be the
   // second one.
@@ -4152,8 +4173,8 @@ static Value *SimplifyShuffleVectorInst(Value *Op0, Value *Op1, Constant *Mask,
   // A shuffle of a splat is always the splat itself. Legal if the shuffle's
   // value type is same as the input vectors' type.
   if (auto *OpShuf = dyn_cast<ShuffleVectorInst>(Op0))
-    if (isa<UndefValue>(Op1) && RetTy == InVecTy &&
-        OpShuf->getMask()->getSplatValue())
+    if (!InVecTy->getVectorIsScalable() && isa<UndefValue>(Op1) &&
+        RetTy == InVecTy && cast<Constant>(OpShuf->getMask())->getSplatValue())
       return Op0;
 
   // Don't fold a shuffle with undef mask elements. This may get folded in a
@@ -4181,7 +4202,7 @@ static Value *SimplifyShuffleVectorInst(Value *Op0, Value *Op1, Constant *Mask,
 }
 
 /// Given operands for a ShuffleVectorInst, fold the result or return null.
-Value *llvm::SimplifyShuffleVectorInst(Value *Op0, Value *Op1, Constant *Mask,
+Value *llvm::SimplifyShuffleVectorInst(Value *Op0, Value *Op1, Value *Mask,
                                        Type *RetTy, const SimplifyQuery &Q) {
   return ::SimplifyShuffleVectorInst(Op0, Op1, Mask, RetTy, Q, RecursionLimit);
 }
@@ -4629,6 +4650,10 @@ Value *llvm::SimplifyInstruction(Instruction *I, const SimplifyQuery &SQ,
   }
   case Instruction::ShuffleVector: {
     auto *SVI = cast<ShuffleVectorInst>(I);
+    if (cast<VectorType>(SVI->getType())->isScalable()) {
+      Result = ConstantFoldInstruction(I, Q.DL, Q.TLI);
+      break;
+    }
     Result = SimplifyShuffleVectorInst(SVI->getOperand(0), SVI->getOperand(1),
                                        SVI->getMask(), SVI->getType(), Q);
     break;

@@ -1,5 +1,7 @@
 # RUN: not llvm-mc -triple arm64-apple-darwin < %s 2> %t | FileCheck %s
 # RUN: FileCheck --check-prefix=CHECK-ERRORS < %t %s
+# RUN: not llvm-mc -triple arm64-apple-darwin -mattr=+sve < %s 2> %t | FileCheck %s
+# RUN: FileCheck --check-prefix=CHECK-ERRORS < %t %s
 
 .globl _fct1
 _fct1:

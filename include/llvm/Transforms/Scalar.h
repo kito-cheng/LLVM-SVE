@@ -196,6 +196,12 @@ Pass *createLoopRerollPass();
 
 //===----------------------------------------------------------------------===//
 //
+// LoopExprTreeFactoring -
+//
+Pass *createLoopExprTreeFactoringPass();
+
+//===----------------------------------------------------------------------===//
+//
 // LoopRotate - This pass is a simple loop rotating pass.
 //
 Pass *createLoopRotatePass(int MaxHeaderSize = -1);
@@ -211,6 +217,14 @@ Pass *createLoopIdiomPass();
 // LoopVersioningLICM - This pass is a loop versioning pass for LICM.
 //
 Pass *createLoopVersioningLICMPass();
+
+//===----------------------------------------------------------------------===//
+//
+// LoopSpeculativeBoundsCheck - Determines whether speculatively checking loop
+// bounds can be used to enable later optimization if the initial value of a
+// load can guarantee no aliasing will occur.
+//
+Pass *createLoopSpeculativeBoundsCheckPass();
 
 //===----------------------------------------------------------------------===//
 //
@@ -476,6 +490,13 @@ createSeparateConstOffsetFromGEPPass(const TargetMachine *TM = nullptr,
 
 //===----------------------------------------------------------------------===//
 //
+// SeparateInvariantFromGepOffset - Split Invariants from complex GEP offsets
+//
+FunctionPass *
+createSeparateInvariantsFromGepOffsetPass();
+
+//===----------------------------------------------------------------------===//
+//
 // SpeculativeExecution - Aggressively hoist instructions to enable
 // speculative execution on targets where branches are expensive.
 //
@@ -568,6 +589,12 @@ ModulePass *createNameAnonGlobalPass();
 // used.
 //
 FunctionPass *createLibCallsShrinkWrapPass();
+
+//===----------------------------------------------------------------------===//
+//
+// LoopRewriteGEPs -
+//
+Pass *createLoopRewriteGEPsPass();
 } // End llvm namespace
 
 #endif

@@ -1,6 +1,7 @@
 ; RUN: opt -S -vectorize-num-stores-pred=1 -force-vector-width=1 -force-vector-interleave=2 -loop-vectorize -verify-loop-info -simplifycfg < %s | FileCheck %s --check-prefix=UNROLL
 ; RUN: opt -S -vectorize-num-stores-pred=1 -force-vector-width=1 -force-vector-interleave=2 -loop-vectorize -verify-loop-info < %s | FileCheck %s --check-prefix=UNROLL-NOSIMPLIFY
 ; RUN: opt -S -vectorize-num-stores-pred=1 -force-vector-width=2 -force-vector-interleave=1 -loop-vectorize -verify-loop-info -simplifycfg < %s | FileCheck %s --check-prefix=VEC
+; RUN: opt -S -vectorize-num-stores-pred=1 -force-vector-width=2 -force-vector-interleave=1 -sve-loop-vectorize -force-scalable-vectorization -force-vector-predication -verify-loop-info -simplifycfg -instcombine < %s | FileCheck %s --check-prefix=VEC-PRED
 
 target datalayout = "e-m:o-i64:64-f80:128-n8:16:32:64-S128"
 
@@ -39,6 +40,16 @@ entry:
 ; VEC:   br label %[[else2:.+]]
 ;
 ; VEC: [[else2]]:
+
+; VEC-PRED-LABEL: test
+; VEC-PRED:   br label %[[vecbody:.+]]
+
+; VEC-PRED: [[vecbody]]:
+; VEC-PRED:   %[[pred:.*]] = phi <n x 2 x i1>
+; VEC-PRED:   %[[cond:.*]] = icmp sgt <n x 2 x i32> %{{.*}}, shufflevector (<n x 2 x i32> insertelement (<n x 2 x i32> undef, i32 100, i32 0), <n x 2 x i32> undef, <n x 2 x i32> zeroinitializer)
+; VEC-PRED:   %[[store_pred:.*]] = and <n x 2 x i1> %[[pred]], %[[cond]]
+; VEC-PRED:   call void @llvm.masked.store.nxv2i32.p0nxv2i32(<n x 2 x i32> %{{.*}}, <n x 2 x i32>* %{{.*}}, i32 4, <n x 2 x i1> %[[store_pred]])
+; VEC-PRED:   br i1 %{{.+}}, label %[[vecbody]], label %{{.*}}
 
 ; UNROLL-LABEL: test
 ; UNROLL: vector.body:

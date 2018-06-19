@@ -19,13 +19,10 @@
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/Metadata.h"
+#include "llvm/IR/IntrinsicInst.h"
 
 namespace llvm {
 
-class LoadInst;
-class StoreInst;
-class MemTransferInst;
-class MemIntrinsic;
 class TargetLibraryInfo;
 
 /// Representation for a specific memory location.
@@ -67,6 +64,7 @@ public:
   static MemoryLocation get(const VAArgInst *VI);
   static MemoryLocation get(const AtomicCmpXchgInst *CXI);
   static MemoryLocation get(const AtomicRMWInst *RMWI);
+  static MemoryLocation get(const MemSetInst *MSI);
   static MemoryLocation get(const Instruction *Inst) {
     if (auto *I = dyn_cast<LoadInst>(Inst))
       return get(I);
@@ -77,6 +75,8 @@ public:
     else if (auto *I = dyn_cast<AtomicCmpXchgInst>(Inst))
       return get(I);
     else if (auto *I = dyn_cast<AtomicRMWInst>(Inst))
+      return get(I);
+    else if (auto *I = dyn_cast<MemSetInst>(Inst))
       return get(I);
     llvm_unreachable("unsupported memory instruction");
   }

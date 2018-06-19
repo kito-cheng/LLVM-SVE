@@ -468,7 +468,7 @@ Constant *FoldReinterpretLoadFromConstPtr(Constant *C, Type *LoadTy,
       MapTy = Type::getInt32Ty(C->getContext());
     else if (LoadTy->isDoubleTy())
       MapTy = Type::getInt64Ty(C->getContext());
-    else if (LoadTy->isVectorTy()) {
+    else if (LoadTy->isVectorTy() && !LoadTy->getVectorIsScalable()) {
       MapTy = PointerType::getIntNTy(C->getContext(),
                                      DL.getTypeAllocSizeInBits(LoadTy));
     } else
@@ -814,9 +814,8 @@ Constant *SymbolicallyEvaluateGEP(const GEPOperator *GEP,
       // "inttoptr (sub (ptrtoint Ptr), V)"
       if (Ops.size() == 2 && ResElemTy->isIntegerTy(8)) {
         auto *CE = dyn_cast<ConstantExpr>(Ops[1]);
-        assert((!CE || CE->getType() == IntPtrTy) &&
-               "CastGEPIndices didn't canonicalize index types!");
         if (CE && CE->getOpcode() == Instruction::Sub &&
+            CE->getType() == IntPtrTy &&
             CE->getOperand(0)->isNullValue()) {
           Constant *Res = ConstantExpr::getPtrToInt(Ptr, CE->getType());
           Res = ConstantExpr::getSub(Res, CE->getOperand(1));
@@ -1992,6 +1991,10 @@ Constant *ConstantFoldVectorCall(StringRef Name, unsigned IntrinsicID,
   SmallVector<Constant *, 4> Result(VTy->getNumElements());
   SmallVector<Constant *, 4> Lane(Operands.size());
   Type *Ty = VTy->getElementType();
+
+  // This function currently only supports non-scalable vectors
+  if (VTy->isScalable())
+    return nullptr;
 
   if (IntrinsicID == Intrinsic::masked_load) {
     auto *SrcPtr = Operands[0];

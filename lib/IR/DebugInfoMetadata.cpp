@@ -226,6 +226,14 @@ DISubrange *DISubrange::getImpl(LLVMContext &Context, int64_t Count, int64_t Lo,
   DEFINE_GETIMPL_STORE_NO_OPS(DISubrange, (Count, Lo));
 }
 
+DISubrange *DISubrange::getImpl(LLVMContext &Context, Metadata *CountNode,
+                                int64_t Lo, StorageType Storage,
+                                bool ShouldCreate) {
+  DEFINE_GETIMPL_LOOKUP(DISubrange, (CountNode, Lo));
+  Metadata *Ops[] = { CountNode };
+  DEFINE_GETIMPL_STORE(DISubrange, (CountNode, Lo), Ops);
+}
+
 DIEnumerator *DIEnumerator::getImpl(LLVMContext &Context, int64_t Value,
                                     MDString *Name, StorageType Storage,
                                     bool ShouldCreate) {
@@ -519,12 +527,15 @@ DINamespace *DINamespace::getImpl(LLVMContext &Context, Metadata *Scope,
 DIModule *DIModule::getImpl(LLVMContext &Context, Metadata *Scope,
                             MDString *Name, MDString *ConfigurationMacros,
                             MDString *IncludePath, MDString *ISysRoot,
+                            Metadata *File, unsigned Line,
                             StorageType Storage, bool ShouldCreate) {
   assert(isCanonical(Name) && "Expected canonical MDString");
   DEFINE_GETIMPL_LOOKUP(
-      DIModule, (Scope, Name, ConfigurationMacros, IncludePath, ISysRoot));
-  Metadata *Ops[] = {Scope, Name, ConfigurationMacros, IncludePath, ISysRoot};
-  DEFINE_GETIMPL_STORE_NO_CONSTRUCTOR_ARGS(DIModule, Ops);
+      DIModule, (Scope, Name, ConfigurationMacros, IncludePath, ISysRoot, File,
+                 Line));
+  Metadata *Ops[] = {Scope, Name, ConfigurationMacros, IncludePath, ISysRoot,
+                     File};
+  DEFINE_GETIMPL_STORE(DIModule, (Line), Ops);
 }
 
 DITemplateTypeParameter *DITemplateTypeParameter::getImpl(LLVMContext &Context,
@@ -595,10 +606,12 @@ DIExpression *DIExpression::getImpl(LLVMContext &Context,
 
 unsigned DIExpression::ExprOperand::getSize() const {
   switch (getOp()) {
+  case dwarf::DW_OP_bregx:
   case dwarf::DW_OP_LLVM_fragment:
     return 3;
   case dwarf::DW_OP_constu:
   case dwarf::DW_OP_plus_uconst:
+  case dwarf::DW_OP_deref_size:
     return 2;
   default:
     return 1;
@@ -642,9 +655,12 @@ bool DIExpression::isValid() const {
     case dwarf::DW_OP_constu:
     case dwarf::DW_OP_plus_uconst:
     case dwarf::DW_OP_plus:
+    case dwarf::DW_OP_mul:
+    case dwarf::DW_OP_bregx:
     case dwarf::DW_OP_minus:
     case dwarf::DW_OP_deref:
     case dwarf::DW_OP_xderef:
+    case dwarf::DW_OP_deref_size:
       break;
     }
   }
@@ -721,6 +737,34 @@ DIExpression *DIExpression::prepend(const DIExpression *Expr, bool Deref,
     }
   if (StackValue)
     Ops.push_back(dwarf::DW_OP_stack_value);
+  return DIExpression::get(Expr->getContext(), Ops);
+}
+
+DIExpression *DIExpression::createFragmentExpression(const DIExpression *Expr,
+                                                     unsigned OffsetInBits,
+                                                     unsigned SizeInBits) {
+  SmallVector<uint64_t, 8> Ops;
+  // Copy over the expression, but leave off any trailing DW_OP_LLVM_fragment.
+  if (Expr) {
+    for (auto Op : Expr->expr_ops()) {
+      if (Op.getOp() == dwarf::DW_OP_LLVM_fragment) {
+        // Make the new offset point into the existing fragment.
+        uint64_t FragmentOffsetInBits = Op.getArg(0);
+        // Op.getArg(0) is FragmentOffsetInBits.
+        // Op.getArg(1) is FragmentSizeInBits.
+        assert((OffsetInBits + SizeInBits <= Op.getArg(0) + Op.getArg(1)) &&
+               "new fragment outside of original fragment");
+        OffsetInBits += FragmentOffsetInBits;
+        break;
+      }
+      Ops.push_back(Op.getOp());
+      for (unsigned I = 0; I < Op.getNumArgs(); ++I)
+        Ops.push_back(Op.getArg(I));
+    }
+  }
+  Ops.push_back(dwarf::DW_OP_LLVM_fragment);
+  Ops.push_back(OffsetInBits);
+  Ops.push_back(SizeInBits);
   return DIExpression::get(Expr->getContext(), Ops);
 }
 

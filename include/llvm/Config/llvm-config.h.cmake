@@ -17,6 +17,9 @@
 /* Define if we link Polly to the tools */
 #cmakedefine LINK_POLLY_INTO_TOOLS
 
+/* Define if we need a custom diagnostic handler */
+#cmakedefine ARM_INSIGHTS_HANDLER
+
 /* Target triple LLVM will generate code for by default */
 #cmakedefine LLVM_DEFAULT_TARGET_TRIPLE "${LLVM_DEFAULT_TARGET_TRIPLE}"
 

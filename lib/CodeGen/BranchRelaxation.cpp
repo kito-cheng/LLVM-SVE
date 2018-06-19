@@ -119,7 +119,7 @@ void BranchRelaxation::verify() {
     unsigned Align = MBB.getAlignment();
     unsigned Num = MBB.getNumber();
     assert(BlockInfo[Num].Offset % (1u << Align) == 0);
-    assert(!Num || BlockInfo[PrevNum].postOffset(MBB) <= BlockInfo[Num].Offset);
+    assert(!Num || BlockInfo[PrevNum].postOffset(MBB) == BlockInfo[Num].Offset);
     assert(BlockInfo[Num].Size == computeBlockSize(MBB));
     PrevNum = Num;
   }
@@ -186,7 +186,7 @@ void BranchRelaxation::adjustBlockOffsets(MachineBasicBlock &Start) {
   unsigned PrevNum = Start.getNumber();
   for (auto &MBB : make_range(MachineFunction::iterator(Start), MF->end())) {
     unsigned Num = MBB.getNumber();
-    if (!Num) // block zero is never changed from offset zero.
+    if (Num == PrevNum) // First block's offset is never changed.
       continue;
     // Get the offset and known bits at the end of the layout predecessor.
     // Include the alignment of the current block.

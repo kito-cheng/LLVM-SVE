@@ -13,6 +13,7 @@
 #include "llvm/Analysis/ScalarEvolutionExpander.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Dominators.h"
@@ -41,6 +42,7 @@ protected:
   std::unique_ptr<AssumptionCache> AC;
   std::unique_ptr<DominatorTree> DT;
   std::unique_ptr<LoopInfo> LI;
+  std::unique_ptr<TargetTransformInfo> TTI;
 
   ScalarEvolutionsTest() : M("", Context), TLII(), TLI(TLII) {}
 
@@ -48,7 +50,8 @@ protected:
     AC.reset(new AssumptionCache(F));
     DT.reset(new DominatorTree(F));
     LI.reset(new LoopInfo(*DT));
-    return ScalarEvolution(F, TLI, *AC, *DT, *LI);
+    TTI.reset(new TargetTransformInfo(F.getParent()->getDataLayout()));
+    return ScalarEvolution(F, TLI, *AC, *DT, *LI, *TTI);
   }
 
   void runWithSE(

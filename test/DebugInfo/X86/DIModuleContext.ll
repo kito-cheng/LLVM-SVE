@@ -3,6 +3,12 @@ target triple = "x86_64-apple-macosx"
 ; RUN: %llc_dwarf %s -o - -filetype=obj \
 ; RUN:   | llvm-dwarfdump -debug-dump=info - | FileCheck %s
 ; CHECK: DW_TAG_module
+; CHECK-NEXT: DW_AT_name
+; CHECK-NEXT: DW_AT_LLVM_include_path
+; CHECK-NEXT: DW_AT_LLVM_isysroot
+; CHECK-NEXT: DW_AT_decl_file
+; CHECK-NEXT: DW_AT_decl_line
+
 ; CHECK-NOT: NULL
 ; CHECK: DW_TAG_structure_type
 
@@ -25,7 +31,7 @@ target triple = "x86_64-apple-macosx"
 !5 = !{!0}
 !6 = !{!7}
 !7 = !DIImportedEntity(tag: DW_TAG_imported_declaration, scope: !2, entity: !8, file: !3, line: 11)
-!8 = !DIModule(scope: null, name: "Module", includePath: ".", isysroot: "/")
+!8 = !DIModule(scope: !2, name: "Module", includePath: ".", isysroot: "/", file: !3, line: 11)
 !9 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !10, size: 64, align: 64)
 !10 = !DICompositeType(tag: DW_TAG_structure_type, name: "s", scope: !8, file: !3, line: 1, flags: DIFlagFwdDecl)
 !11 = !{i32 2, !"Dwarf Version", i32 2}

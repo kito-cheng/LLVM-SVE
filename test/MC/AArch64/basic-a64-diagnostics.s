@@ -1,5 +1,7 @@
 // RUN: not llvm-mc -triple aarch64-none-linux-gnu < %s 2> %t
 // RUN: FileCheck --check-prefix=CHECK-ERROR --check-prefix=CHECK-ERROR-ARM64 < %t %s
+// RUN: not llvm-mc -triple aarch64-none-linux-gnu -mattr=+sve < %s 2> %t
+// RUN: FileCheck --check-prefix=CHECK-ERROR --check-prefix=CHECK-ERROR-ARM64 < %t %s
 
 //------------------------------------------------------------------------------
 // Add/sub (extended register)
@@ -86,7 +88,7 @@
 // CHECK-ERROR-AARCH64-NEXT: error: expected compatible register, symbol or integer in range [0, 4095]
 // CHECK-ERROR-AARCH64-NEXT:         add w5, w6, #0x1000
 // CHECK-ERROR-AARCH64-NEXT:                     ^
-// CHECK-ERROR-NEXT: error: expected compatible register, symbol or integer in range [0, 4095]
+// CHECK-ERROR: error: expected compatible register, symbol or integer in range [0, 4095]
 // CHECK-ERROR-NEXT:         add w4, w5, #-4096, lsl #12
 // CHECK-ERROR-NEXT:                     ^
 // CHECK-ERROR-NEXT: error: expected compatible register, symbol or integer in range [0, 4095]
@@ -163,7 +165,7 @@
         // MOV alias should not accept any fiddling
         mov x2, xsp, #123
         mov wsp, w27, #0xfff, lsl #12
-// CHECK-ERROR: error: expected compatible register or logical immediate
+// CHECK-ERROR: error: invalid operand for instruction
 // CHECK-ERROR-NEXT:         mov x2, xsp, #123
 // CHECK-ERROR-NEXT:                 ^
 // CHECK-ERROR-NEXT: error: invalid operand for instruction
@@ -2412,10 +2414,10 @@
 // CHECK-ERROR: error: invalid operand for instruction
 // CHECK-ERROR-NEXT: strb w0, [wsp]
 // CHECK-ERROR-NEXT:           ^
-// CHECK-ERROR-AARCH64: error: invalid operand for instruction
-// CHECK-ERROR-AARCH64-NEXT:         strh w31, [x23, #1]
-// CHECK-ERROR-AARCH64-NEXT:              ^
-// CHECK-ERROR-AARCH64-NEXT: error: too few operands for instruction
+// CHECK-ERROR-NEXT: error: invalid operand for instruction
+// CHECK-ERROR-NEXT:         strh w31, [x23, #1]
+// CHECK-ERROR-NEXT:              ^
+// CHECK-ERROR-AARCH64: error: too few operands for instruction
 // CHECK-ERROR-AARCH64-NEXT:         str x5, [x22, #12]
 // CHECK-ERROR-AARCH64-NEXT:                 ^
 // CHECK-ERROR-NEXT: error: {{expected|index must be an}} integer in range [-256, 255]
@@ -3025,13 +3027,13 @@
 // which is a better match than the genuine ORNWri, whereas it would be better
 // to get the ORNWri diagnostic when the alias did not match, i.e. the
 // alias' diagnostics should have a lower priority.
-// CHECK-ERROR: error: expected compatible register or logical immediate
+// CHECK-ERROR: error: invalid operand for instruction
 // CHECK-ERROR-NEXT:         orn wsp, w3, w5
 // CHECK-ERROR-NEXT:                      ^
 // CHECK-ERROR-NEXT: error: invalid operand for instruction
 // CHECK-ERROR-NEXT:         bics x20, sp, x9, lsr #0
 // CHECK-ERROR-NEXT:                   ^
-// CHECK-ERROR-NEXT: error: expected compatible register or logical immediate
+// CHECK-ERROR-NEXT: error: invalid operand for instruction
 // CHECK-ERROR-NEXT:         orn x2, x6, sp, lsl #3
 // CHECK-ERROR-NEXT:                     ^
 
@@ -3046,10 +3048,10 @@
 // CHECK-ERROR-NEXT: error: invalid operand for instruction
 // CHECK-ERROR-NEXT:         ands w1, x12, w2
 // CHECK-ERROR-NEXT:                  ^
-// CHECK-ERROR-NEXT: error: expected compatible register or logical immediate
+// CHECK-ERROR-NEXT: error: invalid operand for instruction
 // CHECK-ERROR-NEXT:         and x4, x5, w6, lsl #12
 // CHECK-ERROR-NEXT:                     ^
-// CHECK-ERROR-NEXT: error: expected compatible register or logical immediate
+// CHECK-ERROR-NEXT: error: invalid operand for instruction
 // CHECK-ERROR-NEXT:         orr w2, w5, x7, asr #0
 // CHECK-ERROR-NEXT:                     ^
 
@@ -3106,10 +3108,10 @@
         movk w3, #:abs_g0:sym
         movz x3, #:abs_g0_nc:sym
         movn x4, #:abs_g0_nc:sym
-// CHECK-ERROR: error: {{expected relocated symbol or|immediate must be an}} integer in range [0, 65535]
+// CHECK-ERROR: error: invalid operand for instruction
 // CHECK-ERROR-NEXT:         movz x12, #:abs_g0:sym, lsl #16
 // CHECK-ERROR-NEXT:                                 ^
-// CHECK-ERROR-NEXT: error: {{expected relocated symbol or|immediate must be an}} integer in range [0, 65535]
+// CHECK-ERROR:  error: invalid operand for instruction
 // CHECK-ERROR-NEXT:         movz x12, #:abs_g0:sym, lsl #0
 // CHECK-ERROR-NEXT:                                 ^
 // CHECK-ERROR-AARCH64-NEXT: error: {{expected relocated symbol or|immediate must be an}} integer in range [0, 65535]

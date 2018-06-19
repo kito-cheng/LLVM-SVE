@@ -513,7 +513,7 @@ bool Scalarizer::visitBinaryOperator(BinaryOperator &BO) {
 
 bool Scalarizer::visitGetElementPtrInst(GetElementPtrInst &GEPI) {
   VectorType *VT = dyn_cast<VectorType>(GEPI.getType());
-  if (!VT)
+  if (!VT || VT->getVectorIsScalable())
     return false;
 
   IRBuilder<> Builder(&GEPI);
@@ -524,7 +524,7 @@ bool Scalarizer::visitGetElementPtrInst(GetElementPtrInst &GEPI) {
   // splat the pointer into a vector value, and scatter that vector.
   Value *Op0 = GEPI.getOperand(0);
   if (!Op0->getType()->isVectorTy())
-    Op0 = Builder.CreateVectorSplat(NumElems, Op0);
+    Op0 = Builder.CreateVectorSplat({NumElems, false}, Op0);
   Scatterer Base = scatter(&GEPI, Op0);
 
   SmallVector<Scatterer, 8> Ops;
@@ -535,7 +535,7 @@ bool Scalarizer::visitGetElementPtrInst(GetElementPtrInst &GEPI) {
     // The indices might be scalars even if it's a vector GEP. In those cases,
     // splat the scalar into a vector value, and scatter that vector.
     if (!Op->getType()->isVectorTy())
-      Op = Builder.CreateVectorSplat(NumElems, Op);
+      Op = Builder.CreateVectorSplat({NumElems, false}, Op);
 
     Ops[I] = scatter(&GEPI, Op);
   }
@@ -635,6 +635,10 @@ bool Scalarizer::visitShuffleVectorInst(ShuffleVectorInst &SVI) {
   if (!VT)
     return false;
 
+  SmallVector<int, 16> Mask;
+  if (!SVI.getShuffleMask(Mask))
+    return false;
+
   unsigned NumElems = VT->getNumElements();
   Scatterer Op0 = scatter(&SVI, SVI.getOperand(0));
   Scatterer Op1 = scatter(&SVI, SVI.getOperand(1));
@@ -642,7 +646,7 @@ bool Scalarizer::visitShuffleVectorInst(ShuffleVectorInst &SVI) {
   Res.resize(NumElems);
 
   for (unsigned I = 0; I < NumElems; ++I) {
-    int Selector = SVI.getMaskValue(I);
+    int Selector = Mask[I];
     if (Selector < 0)
       Res[I] = UndefValue::get(VT->getElementType());
     else if (unsigned(Selector) < Op0.size())

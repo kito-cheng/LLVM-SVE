@@ -463,3 +463,18 @@ define <2 x i32*> @pr23113(<4 x i32*> %A) {
   %1 = shufflevector <4 x i32*> %A, <4 x i32*> undef, <2 x i32> <i32 0, i32 1>
   ret <2 x i32*> %1
 }
+
+; Test back to back shuffles using the same decrementing mask are removed.
+define <n x 4 x i32> @shuffle_b2b_shuffle_dec_mask(<n x 4 x i32> %a, i32 %idx) {
+; CHECK-LABEL: @shuffle_b2b_shuffle_dec_mask
+; CHECK: ret <n x 4 x i32> %a
+  %1 = insertelement <n x 4 x i32> undef, i32 -1, i32 0
+  %2 = shufflevector <n x 4 x i32> %1, <n x 4 x i32> undef, <n x 4 x i32> zeroinitializer
+  %3 = mul <n x 4 x i32> %2, stepvector
+  %4 = insertelement <n x 4 x i32> undef, i32 %idx, i32 0
+  %5 = shufflevector <n x 4 x i32> %4, <n x 4 x i32> undef, <n x 4 x i32> zeroinitializer
+  %rev.mask = add <n x 4 x i32> %5, %3
+  %a.rev = shufflevector <n x 4 x i32> %a, <n x 4 x i32> undef, <n x 4 x i32> %rev.mask
+  %a.rev.rev = shufflevector <n x 4 x i32> %a.rev, <n x 4 x i32> undef, <n x 4 x i32> %rev.mask
+  ret <n x 4 x i32> %a.rev.rev
+}

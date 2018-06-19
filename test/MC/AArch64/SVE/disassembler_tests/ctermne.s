@@ -1,0 +1,26 @@
+# RUN: llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -disassemble -mattr=+sve < %s | FileCheck %s
+# RUN: llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -disassemble -mattr=-sve 2>&1 < %s | FileCheck --check-prefix=CHECK-ERROR  %s
+0x10,0x20,0xa0,0x25
+# CHECK: ctermne w0, w0 // encoding: [0x10,0x20,0xa0,0x25]
+# CHECK-ERROR: invalid instruction encoding
+0xf0,0x23,0xff,0x25
+# CHECK: ctermne xzr, xzr // encoding: [0xf0,0x23,0xff,0x25]
+# CHECK-ERROR: invalid instruction encoding
+0xb0,0x21,0xe8,0x25
+# CHECK: ctermne x13, x8 // encoding: [0xb0,0x21,0xe8,0x25]
+# CHECK-ERROR: invalid instruction encoding
+0xf0,0x23,0xbf,0x25
+# CHECK: ctermne wzr, wzr // encoding: [0xf0,0x23,0xbf,0x25]
+# CHECK-ERROR: invalid instruction encoding
+0x50,0x21,0xb5,0x25
+# CHECK: ctermne w10, w21 // encoding: [0x50,0x21,0xb5,0x25]
+# CHECK-ERROR: invalid instruction encoding
+0x50,0x21,0xf5,0x25
+# CHECK: ctermne x10, x21 // encoding: [0x50,0x21,0xf5,0x25]
+# CHECK-ERROR: invalid instruction encoding
+0x10,0x20,0xe0,0x25
+# CHECK: ctermne x0, x0 // encoding: [0x10,0x20,0xe0,0x25]
+# CHECK-ERROR: invalid instruction encoding
+0xb0,0x21,0xa8,0x25
+# CHECK: ctermne w13, w8 // encoding: [0xb0,0x21,0xa8,0x25]
+# CHECK-ERROR: invalid instruction encoding

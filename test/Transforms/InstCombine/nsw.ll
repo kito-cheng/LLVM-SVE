@@ -46,6 +46,14 @@ define i32 @preserve1(i32 %x) nounwind {
   ret i32 %add3
 }
 
+; CHECK-LABEL: @preserve2(
+; CHECK: add nsw i32 %x, vscale
+define i32 @preserve2(i32 %x) nounwind {
+  %add = add nsw i32 %x, vscale
+  %add3 = add nsw i32 %add, 0
+  ret i32 %add3
+}
+
 ; CHECK-LABEL: @nopreserve1(
 ; CHECK: add i8 %x, -126
 define i8 @nopreserve1(i8 %x) nounwind {

@@ -1178,14 +1178,27 @@ Error MetadataLoader::MetadataLoaderImpl::parseOneMetadata(
     break;
   }
   case bitc::METADATA_SUBRANGE: {
-    if (Record.size() != 3)
+    if (Record.size() == 3) {
+      MetadataList.assignValue(
+          GET_OR_DISTINCT(DISubrange,
+                          (Context, Record[1], unrotateSign(Record[2]))),
+          NextMetadataNo);
+    } else if (Record.size() == 4) {
+      auto CountNode = getMDOrNull(Record[1]);
+      if (CountNode)
+        MetadataList.assignValue(
+            GET_OR_DISTINCT(DISubrange,
+                            (Context, CountNode, unrotateSign(Record[3]))),
+            NextMetadataNo);
+      else
+        MetadataList.assignValue(
+            GET_OR_DISTINCT(DISubrange,
+                            (Context, Record[2], unrotateSign(Record[3]))),
+            NextMetadataNo);
+    } else
       return error("Invalid record");
 
     IsDistinct = Record[0];
-    MetadataList.assignValue(
-        GET_OR_DISTINCT(DISubrange,
-                        (Context, Record[1], unrotateSign(Record[2]))),
-        NextMetadataNo);
     NextMetadataNo++;
     break;
   }
@@ -1324,15 +1337,21 @@ Error MetadataLoader::MetadataLoaderImpl::parseOneMetadata(
   }
 
   case bitc::METADATA_MODULE: {
-    if (Record.size() != 6)
+    if (Record.size() != 8){
       return error("Invalid record");
+    }
 
     IsDistinct = Record[0];
     MetadataList.assignValue(
         GET_OR_DISTINCT(DIModule,
-                        (Context, getMDOrNull(Record[1]),
-                         getMDString(Record[2]), getMDString(Record[3]),
-                         getMDString(Record[4]), getMDString(Record[5]))),
+                        (Context,
+                         getMDOrNull(Record[1]), //Scope
+                         getMDString(Record[2]), //Name
+                         getMDString(Record[3]), //ConfigMacros
+                         getMDString(Record[4]), //IncludePath
+                         getMDString(Record[5]), //ISysRoot
+                         getMDOrNull(Record[6]), //File
+                         Record[7])), //Line
         NextMetadataNo);
     NextMetadataNo++;
     break;

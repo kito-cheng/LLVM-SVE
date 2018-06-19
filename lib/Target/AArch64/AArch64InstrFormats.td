@@ -21,6 +21,26 @@ class Format<bits<2> val> {
 def PseudoFrm   : Format<0>;
 def NormalFrm   : Format<1>; // Do we need any others?
 
+class DestructiveInstTypeEnum<bits<4> val> {
+  bits<4> Value = val;
+}
+def NotDestructive                : DestructiveInstTypeEnum<0>;
+def DestructiveOther              : DestructiveInstTypeEnum<1>;
+def DestructiveUnary              : DestructiveInstTypeEnum<2>;
+def DestructiveBinaryImm          : DestructiveInstTypeEnum<3>;
+def DestructiveBinaryShImmUnpred  : DestructiveInstTypeEnum<4>;
+def DestructiveBinary             : DestructiveInstTypeEnum<5>;
+def DestructiveBinaryComm         : DestructiveInstTypeEnum<6>;
+def DestructiveBinaryCommWithRev  : DestructiveInstTypeEnum<7>;
+def DestructiveTernaryCommWithRev : DestructiveInstTypeEnum<8>;
+
+class FalseLanesEnum<bits<2> val> {
+  bits<2> Value = val;
+}
+def FalseLanesNone  : FalseLanesEnum<0>;
+def FalseLanesZero  : FalseLanesEnum<1>;
+def FalseLanesUndef : FalseLanesEnum<2>;
+
 // AArch64 Instruction Format
 class AArch64Inst<Format f, string cstr> : Instruction {
   field bits<32> Inst; // Instruction encoding.
@@ -37,6 +57,15 @@ class AArch64Inst<Format f, string cstr> : Instruction {
   bits<2> Form    = F.Value;
   let Pattern     = [];
   let Constraints = cstr;
+
+  // Defaults
+  FalseLanesEnum FalseLanes = FalseLanesNone;
+  DestructiveInstTypeEnum DestructiveInstType = NotDestructive;
+  EltSizeEnum ElementSize = ElementSizeB;
+
+  let TSFlags{8-7} = FalseLanes.Value;
+  let TSFlags{6-3} = DestructiveInstType.Value;
+  let TSFlags{2-0} = ElementSize.Value;
 }
 
 class InstSubst<string Asm, dag Result, bit EmitPriority = 0>
@@ -49,6 +78,7 @@ class Pseudo<dag oops, dag iops, list<dag> pattern, string cstr = "">
   dag InOperandList  = iops;
   let Pattern        = pattern;
   let isCodeGenOnly  = 1;
+  let isPseudo       = 1;
 }
 
 // Real instructions (have encoding information)
@@ -184,11 +214,40 @@ def GPR32as64 : RegisterOperand<GPR32> {
   let ParserMatchClass = GPR32as64Operand;
 }
 
+// A 64-bit register pasrsed as 32-bit
+def GPR64as32Operand : AsmOperandClass {
+  let Name = "GPR64as32";
+}
+def GPR64as32 : RegisterOperand<GPR64, "printGPR64as32"> {
+  let ParserMatchClass = GPR64as32Operand;
+}
+
 // 8-bit immediate for AdvSIMD where 64-bit values of the form:
 // aaaaaaaa bbbbbbbb cccccccc dddddddd eeeeeeee ffffffff gggggggg hhhhhhhh
 // are encoded as the eight bit value 'abcdefgh'.
 def SIMDImmType10Operand : AsmOperandClass { let Name = "SIMDImmType10"; }
 
+class UImmScaledIndexed<int Width, int Scale> : AsmOperandClass {
+  let Name = "UImm" # Width # "s" # Scale;
+  let DiagnosticType = "InvalidMemoryIndexed" # Scale # "UImm" # Width;
+  let RenderMethod = "addImmOperands";
+  let PredicateMethod = "isUImmScaled<" # Width # ", " # Scale # ">";
+}
+
+// NOTE: Only suitable for use with "ComplexPattern"s
+class UImmScaledMemoryIndexed<int Width, int Scale> : AsmOperandClass {
+  let Name = "UImm" # Width # "s" # Scale;
+  let DiagnosticType = "InvalidMemoryIndexed" # Scale # "UImm" # Width;
+  let RenderMethod = "addImmScaledOperands<" # Scale # ">";
+  let PredicateMethod = "isUImmScaled<" # Width # ", " # Scale # ">";
+}
+
+class SImmScaledMemoryIndexed<int Width, int Scale> : AsmOperandClass {
+  let Name = "SImm" # Width # "s" # Scale;
+  let DiagnosticType = "InvalidMemoryIndexed" # Scale # "SImm" # Width;
+  let RenderMethod = "addImmScaledOperands<" # Scale # ">";
+  let PredicateMethod = "isSImmScaled<" # Width # ", " # Scale # ">";
+}
 
 //===----------------------------------------------------------------------===//
 // Operand Definitions.
@@ -216,13 +275,93 @@ def adrlabel : Operand<i64> {
   let ParserMatchClass = AdrOperand;
 }
 
-// simm9 predicate - True if the immediate is in the range [-256, 255].
-def SImm9Operand : AsmOperandClass {
-  let Name = "SImm9";
-  let DiagnosticType = "InvalidMemoryIndexedSImm9";
+class SImmOperand<int width> : AsmOperandClass {
+  let Name = "SImm" # width;
+  let DiagnosticType = "InvalidMemoryIndexedSImm" # width;
+  let RenderMethod = "addImmOperands";
+  let PredicateMethod = "isSImm<" # width # ">";
 }
+
+def SImm9Operand : SImmOperand<9>;
 def simm9 : Operand<i64>, ImmLeaf<i64, [{ return Imm >= -256 && Imm < 256; }]> {
   let ParserMatchClass = SImm9Operand;
+  let DecoderMethod = "DecodeSImm<9>";
+}
+
+def SImm8Operand : SImmOperand<8>;
+def simm8 : Operand<i64>, ImmLeaf<i64, [{ return Imm >= -128 && Imm < 128; }]> {
+  let ParserMatchClass = SImm8Operand;
+  let DecoderMethod = "DecodeSImm<8>";
+}
+
+def SImm7Operand : SImmOperand<7>;
+def simm7 : Operand<i64>, ImmLeaf<i64, [{ return Imm >= -64 && Imm < 64; }]> {
+  let ParserMatchClass = SImm7Operand;
+}
+
+def SImm6Operand : SImmOperand<6>;
+def simm6 : Operand<i64>, ImmLeaf<i64, [{ return Imm >= -32 && Imm < 32; }]> {
+  let ParserMatchClass = SImm6Operand;
+  let DecoderMethod = "DecodeSImm<6>";
+}
+
+def simm6_32b : Operand<i32>, ImmLeaf<i32, [{ return Imm >= -32 && Imm < 32; }]> {
+  let ParserMatchClass = SImm6Operand;
+  let DecoderMethod = "DecodeSImm<6>";
+}
+
+// uimm6sN predicate - True if the immediate is a multiple of N in the range
+// [0 * N, 64 * N].
+def UImm6s1Operand : UImmScaledMemoryIndexed<6, 1>;
+def UImm6s2Operand : UImmScaledMemoryIndexed<6, 2>;
+def UImm6s4Operand : UImmScaledMemoryIndexed<6, 4>;
+def UImm6s8Operand : UImmScaledMemoryIndexed<6, 8>;
+
+def uimm6b : Operand<i64>, ImmLeaf<i64, [{ return Imm >= 0 && Imm < 64; }]> {
+  let ParserMatchClass = UImm6s1Operand;
+}
+def uimm6h : Operand<i64>, ImmLeaf<i64,
+               [{ return Imm >= 0 && Imm < (64*2) && ((Imm % 2) == 0); }]> {
+  let PrintMethod = "printImmScale<2>";
+  let ParserMatchClass = UImm6s2Operand;
+}
+def uimm6w : Operand<i64>, ImmLeaf<i64,
+               [{ return Imm >= 0 && Imm < (64*4) && ((Imm % 4) == 0); }]> {
+  let PrintMethod = "printImmScale<4>";
+  let ParserMatchClass = UImm6s4Operand;
+}
+def uimm6d : Operand<i64>, ImmLeaf<i64,
+               [{ return Imm >= 0 && Imm < (64*8) && ((Imm % 8) == 0); }]> {
+  let PrintMethod = "printImmScale<8>";
+  let ParserMatchClass = UImm6s8Operand;
+}
+
+def SImm5Operand : SImmOperand<5>;
+def simm5_64b : Operand<i64>, ImmLeaf<i64, [{ return Imm >= -16 && Imm < 16; }]> {
+  let ParserMatchClass = SImm5Operand;
+  let DecoderMethod = "DecodeSImm<5>";
+}
+
+def simm5_32b : Operand<i32>, ImmLeaf<i32, [{ return Imm >= -16 && Imm < 16; }]> {
+  let ParserMatchClass = SImm5Operand;
+  let DecoderMethod = "DecodeSImm<5>";
+}
+
+def SImm4Operand : SImmOperand<4>;
+def simm4 : Operand<i64>, ImmLeaf<i64, [{ return Imm >= -8 && Imm < 8; }]> {
+  let ParserMatchClass = SImm4Operand;
+}
+
+// simm4sN predicate - True if the immediate is a multiple of N in the range
+// [ -8* N, 7 * N].
+// -128 112
+def SImm4s16Operand : SImmScaledMemoryIndexed<4, 16>;
+
+def simm4s16 : Operand<i64>, ImmLeaf<i64,
+               [{ return Imm >=-128  && Imm <= 112 && (Imm % 16) == 0x0; }]> {
+  let PrintMethod = "printImmScale<16>";
+  let ParserMatchClass = SImm4s16Operand;
+  let DecoderMethod = "DecodeSImm<4>";
 }
 
 // simm7sN predicate - True if the immediate is a multiple of N in the range
@@ -230,6 +369,8 @@ def simm9 : Operand<i64>, ImmLeaf<i64, [{ return Imm >= -256 && Imm < 256; }]> {
 class SImm7Scaled<int Scale> : AsmOperandClass {
   let Name = "SImm7s" # Scale;
   let DiagnosticType = "InvalidMemoryIndexed" # Scale # "SImm7";
+  let RenderMethod = "addImmScaledOperands<" # Scale # ">";
+  let PredicateMethod = "isSImmScaled<7, " # Scale # ">";
 }
 
 def SImm7s4Operand : SImm7Scaled<4>;
@@ -251,6 +392,31 @@ def simm7s16 : Operand<i32> {
   let PrintMethod = "printImmScale<16>";
 }
 
+// uimm5sN predicate - True if the immediate is a multiple of N in the range
+// [0 * N, 32 * N].
+def UImm5s2Operand : UImmScaledIndexed<5, 2>;
+def UImm5s4Operand : UImmScaledIndexed<5, 4>;
+def UImm5s8Operand : UImmScaledIndexed<5, 8>;
+
+def uimm5s2 : Operand<i64>, ImmLeaf<i64,
+                [{ return Imm >= 0 && Imm < (32*2) && ((Imm % 2) == 0); }]> {
+  let ParserMatchClass = UImm5s2Operand;
+  let DecoderMethod = "DecodeSVEScaledImm<2>";
+  let EncoderMethod = "getSVEScaledImm<2>";
+}
+def uimm5s4 : Operand<i64>, ImmLeaf<i64,
+                [{ return Imm >= 0 && Imm < (32*4) && ((Imm % 4) == 0); }]> {
+  let ParserMatchClass = UImm5s4Operand;
+  let DecoderMethod = "DecodeSVEScaledImm<4>";
+  let EncoderMethod = "getSVEScaledImm<4>";
+}
+def uimm5s8 : Operand<i64>, ImmLeaf<i64,
+                [{ return Imm >= 0 && Imm < (32*8) && ((Imm % 8) == 0); }]> {
+  let ParserMatchClass = UImm5s8Operand;
+  let DecoderMethod = "DecodeSVEScaledImm<8>";
+  let EncoderMethod = "getSVEScaledImm<8>";
+}
+
 def am_indexed7s8   : ComplexPattern<i64, 2, "SelectAddrModeIndexed7S8", []>;
 def am_indexed7s16  : ComplexPattern<i64, 2, "SelectAddrModeIndexed7S16", []>;
 def am_indexed7s32  : ComplexPattern<i64, 2, "SelectAddrModeIndexed7S32", []>;
@@ -260,6 +426,7 @@ def am_indexed7s128 : ComplexPattern<i64, 2, "SelectAddrModeIndexed7S128", []>;
 class AsmImmRange<int Low, int High> : AsmOperandClass {
   let Name = "Imm" # Low # "_" # High;
   let DiagnosticType = "InvalidImm" # Low # "_" # High;
+  let RenderMethod = "addImmOperands";
   let PredicateMethod = "isImmInRange<" # Low # "," # High # ">";
 }
 
@@ -429,6 +596,7 @@ def vecshiftR64Narrow : Operand<i32>, ImmLeaf<i32, [{
 }
 
 def Imm0_1Operand : AsmImmRange<0, 1>;
+def Imm0_3Operand : AsmImmRange<0, 3>;
 def Imm0_7Operand : AsmImmRange<0, 7>;
 def Imm0_15Operand : AsmImmRange<0, 15>;
 def Imm0_31Operand : AsmImmRange<0, 31>;
@@ -463,7 +631,6 @@ def vecshiftL64 : Operand<i32>, ImmLeaf<i32, [{
   let ParserMatchClass = Imm0_63Operand;
 }
 
-
 // Crazy immediate formats used by 32-bit and 64-bit logical immediate
 // instructions for splatting repeating bit patterns across the immediate.
 def logical_imm32_XFORM : SDNodeXForm<imm, [{
@@ -475,30 +642,40 @@ def logical_imm64_XFORM : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant(enc, SDLoc(N), MVT::i32);
 }]>;
 
-let DiagnosticType = "LogicalSecondSource" in {
+def DP_IsConstantImm : DiagnosticPredicateClass<[{Operand.isConstantImm()}]>;
+
+let DiagnosticType = "LogicalSecondSource", DiagnosticPredicate = DP_IsConstantImm in {
   def LogicalImm32Operand : AsmOperandClass {
     let Name = "LogicalImm32";
+    let PredicateMethod = "isLogicalImm<int32_t>";
+    let RenderMethod = "addLogicalImmOperands<int32_t>";
   }
   def LogicalImm64Operand : AsmOperandClass {
     let Name = "LogicalImm64";
+    let PredicateMethod = "isLogicalImm<int64_t>";
+    let RenderMethod = "addLogicalImmOperands<int64_t>";
   }
   def LogicalImm32NotOperand : AsmOperandClass {
     let Name = "LogicalImm32Not";
+    let PredicateMethod = "isLogicalImm<int32_t>";
+    let RenderMethod = "addLogicalImmNotOperands<int32_t>";
   }
   def LogicalImm64NotOperand : AsmOperandClass {
     let Name = "LogicalImm64Not";
+    let PredicateMethod = "isLogicalImm<int64_t>";
+    let RenderMethod = "addLogicalImmNotOperands<int64_t>";
   }
 }
 def logical_imm32 : Operand<i32>, PatLeaf<(imm), [{
   return AArch64_AM::isLogicalImmediate(N->getZExtValue(), 32);
 }], logical_imm32_XFORM> {
-  let PrintMethod = "printLogicalImm32";
+  let PrintMethod = "printLogicalImm<int32_t>";
   let ParserMatchClass = LogicalImm32Operand;
 }
 def logical_imm64 : Operand<i64>, PatLeaf<(imm), [{
   return AArch64_AM::isLogicalImmediate(N->getZExtValue(), 64);
 }], logical_imm64_XFORM> {
-  let PrintMethod = "printLogicalImm64";
+  let PrintMethod = "printLogicalImm<int64_t>";
   let ParserMatchClass = LogicalImm64Operand;
 }
 def logical_imm32_not : Operand<i32> {
@@ -508,13 +685,23 @@ def logical_imm64_not : Operand<i64> {
   let ParserMatchClass = LogicalImm64NotOperand;
 }
 
-// imm0_65535 predicate - True if the immediate is in the range [0,65535].
+def Imm0_127Operand : AsmImmRange<0, 127>;
 def Imm0_65535Operand : AsmImmRange<0, 65535>;
+
+// imm0_65535 predicate - True if the immediate is in the range [0,65535].
 def imm0_65535 : Operand<i32>, ImmLeaf<i32, [{
   return ((uint32_t)Imm) < 65536;
 }]> {
   let ParserMatchClass = Imm0_65535Operand;
   let PrintMethod = "printImmHex";
+}
+
+// imm0_65535dec predicate - True if the immediate is in the range [0,65535].
+def imm0_65535dec : Operand<i32>, ImmLeaf<i32, [{
+  return ((uint32_t)Imm) < 65536;
+}]> {
+  let ParserMatchClass = Imm0_65535Operand;
+  let PrintMethod = "printImm";
 }
 
 // imm0_255 predicate - True if the immediate is in the range [0,255].
@@ -526,11 +713,23 @@ def imm0_255 : Operand<i32>, ImmLeaf<i32, [{
   let ParserMatchClass = Imm0_255Operand;
   let PrintMethod = "printImm";
 }
+def imm0_255dec : Operand<i32>, ImmLeaf<i32, [{
+  return ((uint32_t)Imm) < 256;
+}]> {
+  let ParserMatchClass = Imm0_255Operand;
+}
 
 // imm0_127 predicate - True if the immediate is in the range [0,127]
-def Imm0_127Operand : AsmImmRange<0, 127>;
 def imm0_127 : Operand<i32>, ImmLeaf<i32, [{
   return ((uint32_t)Imm) < 128;
+}]> {
+  let ParserMatchClass = Imm0_127Operand;
+  let PrintMethod = "printImm";
+}
+
+// same [0,127] range as above, just with a 64b operand type
+def uimm7_64b : Operand<i64>, ImmLeaf<i64, [{
+  return ((uint64_t)Imm) < 128;
 }]> {
   let ParserMatchClass = Imm0_127Operand;
   let PrintMethod = "printImm";
@@ -567,11 +766,11 @@ def imm0_1 : Operand<i64>, ImmLeaf<i64, [{
   let ParserMatchClass = Imm0_1Operand;
 }
 
-// imm0_15 predicate - True if the immediate is in the range [0,15]
-def imm0_15 : Operand<i64>, ImmLeaf<i64, [{
-  return ((uint64_t)Imm) < 16;
+// imm0_3 predicate - True if the immediate is in the range [0,3]
+def imm0_3 : Operand<i64>, ImmLeaf<i64, [{
+  return ((uint64_t)Imm) < 4;
 }]> {
-  let ParserMatchClass = Imm0_15Operand;
+  let ParserMatchClass = Imm0_3Operand;
 }
 
 // imm0_7 predicate - True if the immediate is in the range [0,7]
@@ -579,6 +778,20 @@ def imm0_7 : Operand<i64>, ImmLeaf<i64, [{
   return ((uint64_t)Imm) < 8;
 }]> {
   let ParserMatchClass = Imm0_7Operand;
+}
+
+// imm32_0_7 predicate - True if the 32-bit immediate is in the range [0,7]
+def imm32_0_7 : Operand<i32>, ImmLeaf<i32, [{
+  return ((uint32_t)Imm) < 8;
+}]> {
+  let ParserMatchClass = Imm0_7Operand;
+}
+
+// imm0_15 predicate - True if the immediate is in the range [0,15]
+def imm0_15 : Operand<i64>, ImmLeaf<i64, [{
+  return ((uint64_t)Imm) < 16;
+}]> {
+  let ParserMatchClass = Imm0_15Operand;
 }
 
 // imm32_0_15 predicate - True if the 32-bit immediate is in the range [0,15]
@@ -659,15 +872,23 @@ def move_vec_shift : Operand<i32> {
 }
 
 let DiagnosticType = "AddSubSecondSource" in {
-  def AddSubImmOperand : AsmOperandClass {
-    let Name = "AddSubImm";
+  class AddSubImmOperand<int Shift> : AsmOperandClass {
+    let Name = "AddSubImm" # Shift;
+    let RenderMethod = "addAddSubImmOperands<" # Shift # ">";
     let ParserMethod = "tryParseAddSubImm";
+    let PredicateMethod = "isAddSubImm<" # Shift # ">";
   }
-  def AddSubImmNegOperand : AsmOperandClass {
-    let Name = "AddSubImmNeg";
+  class AddSubImmNegOperand<int Shift> : AsmOperandClass {
+    let Name = "AddSubImmNeg" # Shift;
+    let RenderMethod = "addAddSubImmNegOperands";
     let ParserMethod = "tryParseAddSubImm";
+    let PredicateMethod = "isAddSubImmNeg<" # Shift # ">";
   }
 }
+
+def AddSubImm12Operand : AddSubImmOperand<12>;
+def AddSubImmNeg12Operand : AddSubImmNegOperand<12>;
+
 // An ADD/SUB immediate shifter operand:
 //  second operand:
 //  {7-6} - shift type: 00 = lsl
@@ -676,14 +897,14 @@ class addsub_shifted_imm<ValueType Ty>
     : Operand<Ty>, ComplexPattern<Ty, 2, "SelectArithImmed", [imm]> {
   let PrintMethod = "printAddSubImm";
   let EncoderMethod = "getAddSubImmOpValue";
-  let ParserMatchClass = AddSubImmOperand;
+  let ParserMatchClass = AddSubImm12Operand;
   let MIOperandInfo = (ops i32imm, i32imm);
 }
 
 class addsub_shifted_imm_neg<ValueType Ty>
     : Operand<Ty> {
   let EncoderMethod = "getAddSubImmOpValue";
-  let ParserMatchClass = AddSubImmNegOperand;
+  let ParserMatchClass = AddSubImmNeg12Operand;
   let MIOperandInfo = (ops i32imm, i32imm);
 }
 
@@ -704,7 +925,7 @@ class neg_addsub_shifted_imm<ValueType Ty>
     : Operand<Ty>, ComplexPattern<Ty, 2, "SelectNegArithImmed", [imm]> {
   let PrintMethod = "printAddSubImm";
   let EncoderMethod = "getAddSubImmOpValue";
-  let ParserMatchClass = AddSubImmOperand;
+  let ParserMatchClass = AddSubImm12Operand;
   let MIOperandInfo = (ops i32imm, i32imm);
 }
 
@@ -785,10 +1006,23 @@ def fpimm0 : PatLeaf<(fpimm), [{
   return N->isExactlyValue(+0.0);
 }]>;
 
+def fpimm_half : PatLeaf<(fpimm), [{
+  return N->isExactlyValue(+0.5);
+}]>;
+
+def fpimm_one : PatLeaf<(fpimm), [{
+  return N->isExactlyValue(+1.0);
+}]>;
+
+def fpimm_two : PatLeaf<(fpimm), [{
+  return N->isExactlyValue(+2.0);
+}]>;
+
 // Vector lane operands
 class AsmVectorIndex<string Suffix> : AsmOperandClass {
   let Name = "VectorIndex" # Suffix;
   let DiagnosticType = "InvalidIndex" # Suffix;
+  let RenderMethod = "addVectorIndex";
 }
 def VectorIndex1Operand : AsmVectorIndex<"1">;
 def VectorIndexBOperand : AsmVectorIndex<"B">;
@@ -850,7 +1084,6 @@ def simdimmtype10 : Operand<i32>,
   let ParserMatchClass = SIMDImmType10Operand;
   let PrintMethod = "printSIMDType10Operand";
 }
-
 
 //---
 // System management
@@ -1186,13 +1419,15 @@ def am_tbrcond : Operand<OtherVT> {
 // AsmOperand classes to emit (or not) special diagnostics
 def TBZImm0_31Operand : AsmOperandClass {
   let Name = "TBZImm0_31";
+  let DiagnosticType = "InvalidImm0_63";
   let PredicateMethod = "isImmInRange<0,31>";
-  let RenderMethod = "addImm0_31Operands";
+  let RenderMethod = "addImmOperands";
 }
 def TBZImm32_63Operand : AsmOperandClass {
-  let Name = "Imm32_63";
-  let PredicateMethod = "isImmInRange<32,63>";
+  let Name = "TBZImm32_63";
   let DiagnosticType = "InvalidImm0_63";
+  let PredicateMethod = "isImmInRange<32,63>";
+  let RenderMethod = "addImmOperands";
 }
 
 class tbz_imm0_31<AsmOperandClass matcher> : Operand<i64>, ImmLeaf<i64, [{
@@ -2378,6 +2613,13 @@ def am_indexed32 : ComplexPattern<i64, 2, "SelectAddrModeIndexed32", []>;
 def am_indexed64 : ComplexPattern<i64, 2, "SelectAddrModeIndexed64", []>;
 def am_indexed128 : ComplexPattern<i64, 2, "SelectAddrModeIndexed128", []>;
 
+// (unsigned immediate)
+// Indexed for 8-bit registers. offset is in range [0,63].
+def am_indexed8_6b : ComplexPattern<i64, 2, "SelectAddrModeIndexedUImm<1,63>", []>;
+def am_indexed16_6b : ComplexPattern<i64, 2, "SelectAddrModeIndexedUImm<2,63>", []>;
+def am_indexed32_6b : ComplexPattern<i64, 2, "SelectAddrModeIndexedUImm<4,63>", []>;
+def am_indexed64_6b : ComplexPattern<i64, 2, "SelectAddrModeIndexedUImm<8,63>", []>;
+
 class UImm12OffsetOperand<int Scale> : AsmOperandClass {
   let Name = "UImm12Offset" # Scale;
   let RenderMethod = "addUImm12OffsetOperands<" # Scale # ">";
@@ -3011,6 +3253,11 @@ def am_unscaled16 : ComplexPattern<i64, 2, "SelectAddrModeUnscaled16", []>;
 def am_unscaled32 : ComplexPattern<i64, 2, "SelectAddrModeUnscaled32", []>;
 def am_unscaled64 : ComplexPattern<i64, 2, "SelectAddrModeUnscaled64", []>;
 def am_unscaled128 :ComplexPattern<i64, 2, "SelectAddrModeUnscaled128", []>;
+
+def am_sve_pred : ComplexPattern<i64, 2, "SelectAddrModePred", []>;
+def am_sve_indexed_s9 :ComplexPattern<i64, 2, "SelectAddrModeIndexedSVE<-256, 255>", [], [SDNPWantRoot]>;
+def am_sve_indexed_s6 :ComplexPattern<i64, 2, "SelectAddrModeIndexedSVE<-32,31>", [], [SDNPWantRoot]>;
+def am_sve_indexed_s4 :ComplexPattern<i64, 2, "SelectAddrModeIndexedSVE<-8,7>", [], [SDNPWantRoot]>;
 
 class BaseLoadStoreUnscale<bits<2> sz, bit V, bits<2> opc, dag oops, dag iops,
                            string asm, list<dag> pattern>
@@ -4372,6 +4619,13 @@ class BaseSIMDThreeSameVectorTied<bit Q, bit U, bits<3> size, bits<5> opcode,
   let Inst{10}    = 1;
   let Inst{9-5}   = Rn;
   let Inst{4-0}   = Rd;
+}
+
+// v8.4 Dot product
+class BaseSIMDThreeSameVectorDot<bit Q, bit U, string asm, string kind1,
+                                 string kind2> :
+        BaseSIMDThreeSameVector<Q, U, 0b100, 0b10010, V128, asm, kind1, [] > {
+  let AsmString = !strconcat(asm, "{\t$Rd" # kind1 # ", $Rn" # kind2 # ", $Rm" # kind2 # "}");
 }
 
 // All operand sizes distinguished in the encoding.
@@ -6799,6 +7053,16 @@ class BaseSIMDIndexedTied<bit Q, bit U, bit Scalar, bits<2> size, bits<4> opc,
   let Inst{10}    = 0;
   let Inst{9-5}   = Rn;
   let Inst{4-0}   = Rd;
+}
+
+// v8.4 Index Dot product instructions
+class BaseSIMDThreeSameVectorDotIndex<bit Q, bit U, string asm, string dst_kind,
+                                      string lhs_kind, string rhs_kind> :
+        BaseSIMDIndexedTied<Q, U, 0b0, 0b10, 0b1110, V128, V128, V128, VectorIndexS,
+                            asm, "", dst_kind, lhs_kind, rhs_kind, []> {
+  bits<2> idx;
+  let Inst{21}    = idx{0};  // L
+  let Inst{11}    = idx{1};  // H
 }
 
 multiclass SIMDFPIndexed<bit U, bits<4> opc, string asm,
@@ -9516,6 +9780,7 @@ multiclass STOPregister<string asm, string instr> {
 
 //----------------------------------------------------------------------------
 // Allow the size specifier tokens to be upper case, not just lower.
+def : TokenAlias<".4B", ".4b">;
 def : TokenAlias<".8B", ".8b">;
 def : TokenAlias<".4H", ".4h">;
 def : TokenAlias<".2S", ".2s">;
@@ -9531,3 +9796,6 @@ def : TokenAlias<".H", ".h">;
 def : TokenAlias<".S", ".s">;
 def : TokenAlias<".D", ".d">;
 def : TokenAlias<".Q", ".q">;
+
+
+include "SVEInstrFormats.td"

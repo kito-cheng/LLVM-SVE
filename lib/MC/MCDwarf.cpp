@@ -963,6 +963,86 @@ void MCGenDwarfLabelEntry::Make(MCSymbol *Symbol, MCStreamer *MCOS,
       MCGenDwarfLabelEntry(Name, FileNumber, LineNumber, Label));
 }
 
+// Create scaled expression:
+//  Basereg + Offset + Scalereg * Offset2
+// =>
+//  { DW_OP_plus,
+//     DW_OP_bregx, Basereg,
+//    DW_OP_plus,
+//     DW_OP_consts, Offset,
+//    DW_OP_mul,
+//     DW_OP_bregx, Scalereg,
+//     DW_OP_consts, Offset2 }
+static void getScaledExpression(SmallVectorImpl<char> &expr,
+                                unsigned Basereg, int Offset,
+                                unsigned Scalereg, int Offset2) {
+  uint8_t buffer[10];
+
+  if (Offset2) {
+    // DW_OP_mul,
+    //  DW_OP_bregx, Scalereg,
+    //  DW_OP_consts, Offset2
+    expr.push_back(dwarf::DW_OP_consts);
+    expr.append(buffer, buffer + encodeSLEB128(Offset2, buffer));
+
+    expr.push_back((uint8_t)dwarf::DW_OP_bregx);
+    expr.append(buffer, buffer + encodeULEB128(Scalereg, buffer));
+    expr.append(buffer, buffer + encodeSLEB128(0, buffer));
+    expr.push_back(dwarf::DW_OP_mul);
+  }
+
+  // DW_OP_plus,
+  //  DW_OP_consts, Offset,
+  expr.push_back(dwarf::DW_OP_consts);
+  expr.append(buffer, buffer + encodeSLEB128(Offset, buffer));
+
+  if (Offset2)
+    expr.push_back(dwarf::DW_OP_plus);
+
+  // DW_OP_plus,
+  //  DW_OP_bregx, Basereg,
+  //  DW_OP_consts, Offset,
+  expr.push_back((uint8_t)dwarf::DW_OP_bregx);
+  expr.append(buffer, buffer + encodeULEB128(Basereg, buffer));
+  expr.append(buffer, buffer + encodeSLEB128(0, buffer));
+  expr.push_back(dwarf::DW_OP_plus);
+}
+
+// Creates an MCCFIInstruction:
+//    { DW_CFA_def_cfa_expression, ULEB128 (sizeof expr), expr }
+MCCFIInstruction
+MCCFIInstruction::createScaledDefCfaOffset(MCSymbol *L,
+                                           unsigned Basereg, int Offset,
+                                           unsigned Scalereg, int Offset2,
+                                           StringRef Comment) {
+  SmallVector<char, 100> expr;
+  getScaledExpression(expr, Basereg, Offset, Scalereg, Offset2);
+
+  uint8_t buffer[10];
+  SmallVector<char, 120> expr2 = { dwarf::DW_CFA_def_cfa_expression };
+  expr2.append(buffer, buffer + encodeULEB128(expr.size(), buffer));
+  expr2.append(expr.begin(), expr.end());
+  return createEscape(L, StringRef(expr2.data(), expr2.size()), Comment);
+}
+
+// Creates an MCCFIInstruction:
+//    { DW_CFA_expression, ULEB128 (reg), ULEB128 (sizeof expr), expr }
+MCCFIInstruction
+MCCFIInstruction::createScaledOffset(MCSymbol *L, unsigned Reg,
+                                     unsigned Basereg, int Offset,
+                                     unsigned Scalereg, int Offset2,
+                                     StringRef Comment) {
+  SmallVector<char, 100> expr;
+  getScaledExpression(expr, Basereg, Offset, Scalereg, Offset2);
+
+  uint8_t buffer[10];
+  SmallVector<char, 120> expr2 = { dwarf::DW_CFA_expression };
+  expr2.append(buffer, buffer + encodeULEB128(Reg, buffer));
+  expr2.append(buffer, buffer + encodeULEB128(expr.size(), buffer));
+  expr2.append(expr.begin(), expr.end());
+  return createEscape(L, StringRef(expr2.data(), expr2.size()), Comment);
+}
+
 static int getDataAlignmentFactor(MCStreamer &streamer) {
   MCContext &context = streamer.getContext();
   const MCAsmInfo *asmInfo = context.getAsmInfo();

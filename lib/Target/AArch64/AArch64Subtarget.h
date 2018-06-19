@@ -69,8 +69,11 @@ protected:
   bool HasPerfMon = false;
   bool HasFullFP16 = false;
   bool HasSPE = false;
-  bool HasLSLFast = false;
   bool HasSVE = false;
+  bool HasLSLFast = false;
+  // ARMv8.4A dot product instructions
+  bool HasDotProd = false;
+  bool HasAggressiveFMA = false;
 
   // HasZeroCycleRegMove - Has zero-cycle register mov instructions.
   bool HasZeroCycleRegMove = false;
@@ -101,6 +104,8 @@ protected:
   bool HasFuseLiterals = false;
   bool DisableLatencySchedHeuristic = false;
   bool UseRSqrt = false;
+  bool UseIterativeReciprocal = false;
+  bool HasFreeBasePlusRegAddrMode = true;
   uint8_t MaxInterleaveFactor = 2;
   uint8_t VectorInsertExtractBaseCost = 3;
   uint16_t CacheLineSize = 0;
@@ -205,6 +210,7 @@ public:
   bool hasLSE() const { return HasLSE; }
   bool hasRAS() const { return HasRAS; }
   bool hasRDM() const { return HasRDM; }
+  bool hasDotProd() const { return HasDotProd; } // Add 8.4 dot product extensions
   bool balanceFPOps() const { return BalanceFPOps; }
   bool predictableSelectIsExpensive() const {
     return PredictableSelectIsExpensive;
@@ -227,6 +233,8 @@ public:
   }
 
   bool useRSqrt() const { return UseRSqrt; }
+  bool useIterativeReciprocal() const { return UseIterativeReciprocal; }
+  bool hasFreeBasePlusRegAddrMode() const { return HasFreeBasePlusRegAddrMode; }
   unsigned getMaxInterleaveFactor() const { return MaxInterleaveFactor; }
   unsigned getVectorInsertExtractBaseCost() const {
     return VectorInsertExtractBaseCost;

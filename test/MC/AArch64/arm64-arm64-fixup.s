@@ -1,4 +1,5 @@
 ; RUN: llvm-mc < %s -triple arm64-apple-darwin --show-encoding | FileCheck %s
+; RUN: llvm-mc < %s -triple arm64-apple-darwin -mattr=+sve --show-encoding | FileCheck %s
 
 foo:
   adr x3, Lbar

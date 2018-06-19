@@ -192,8 +192,8 @@ public:
   inline bool isUndef() const;
   inline unsigned getMachineOpcode() const;
   inline const DebugLoc &getDebugLoc() const;
-  inline void dump() const;
-  inline void dumpr() const;
+  inline void dump(const SelectionDAG *G = nullptr) const;
+  inline void dumpr(const SelectionDAG *G = nullptr) const;
 
   /// Return true if this operand (which must be a chain) reaches the
   /// specified operand without crossing any side-effecting instructions.
@@ -499,16 +499,22 @@ protected:
 
   class LSBaseSDNodeBitfields {
     friend class LSBaseSDNode;
+    friend class MaskedGatherScatterSDNode;
 
     uint16_t : NumMemSDNodeBits;
 
-    uint16_t AddressingMode : 3; // enum ISD::MemIndexedMode
+    // This storage is shared between disparate class hierarchies to hold an
+    // enumeration specific to the class hierarchy in use.
+    //   LSBaseSDNode => enum ISD::MemIndexedMode
+    //   MaskedGatherScatterSDNode => enum ISD::MemIndexType
+    uint16_t AddressingMode : 3;
   };
   enum { NumLSBaseSDNodeBits = NumMemSDNodeBits + 3 };
 
   class LoadSDNodeBitfields {
     friend class LoadSDNode;
     friend class MaskedLoadSDNode;
+    friend class MaskedGatherSDNode;
 
     uint16_t : NumLSBaseSDNodeBits;
 
@@ -519,6 +525,7 @@ protected:
   class StoreSDNodeBitfields {
     friend class StoreSDNode;
     friend class MaskedStoreSDNode;
+    friend class MaskedScatterSDNode;
 
     uint16_t : NumLSBaseSDNodeBits;
 
@@ -543,7 +550,7 @@ protected:
   static_assert(sizeof(ConstantSDNodeBitfields) <= 2, "field too wide");
   static_assert(sizeof(MemSDNodeBitfields) <= 2, "field too wide");
   static_assert(sizeof(LSBaseSDNodeBitfields) <= 2, "field too wide");
-  static_assert(sizeof(LoadSDNodeBitfields) <= 4, "field too wide");
+  static_assert(sizeof(LoadSDNodeBitfields) <= 2, "field too wide");
   static_assert(sizeof(StoreSDNodeBitfields) <= 2, "field too wide");
 
 private:
@@ -1091,12 +1098,12 @@ inline const DebugLoc &SDValue::getDebugLoc() const {
   return Node->getDebugLoc();
 }
 
-inline void SDValue::dump() const {
-  return Node->dump();
+inline void SDValue::dump(const SelectionDAG *G) const {
+  return Node->dump(G);
 }
 
-inline void SDValue::dumpr() const {
-  return Node->dumpr();
+inline void SDValue::dumpr(const SelectionDAG *G) const {
+  return Node->dumpr(G);
 }
 
 // Define inline functions from the SDUse class.
@@ -1919,6 +1926,22 @@ public:
   }
 };
 
+class TestCodeSDNode : public SDNode {
+  ISD::TestCode Condition;
+  friend class SelectionDAG;
+  explicit TestCodeSDNode(ISD::TestCode Cond)
+    : SDNode(ISD::TESTCODE, 0, DebugLoc(), getSDVTList(MVT::Other)),
+      Condition(Cond) {
+  }
+public:
+
+  ISD::TestCode get() const { return Condition; }
+
+  static bool classof(const SDNode *N) {
+    return N->getOpcode() == ISD::TESTCODE;
+  }
+};
+
 /// This class is used to represent EVT's, which are used
 /// to parameterize some operations.
 class VTSDNode : public SDNode {
@@ -2115,8 +2138,24 @@ public:
 
   MaskedGatherScatterSDNode(unsigned NodeTy, unsigned Order,
                             const DebugLoc &dl, SDVTList VTs, EVT MemVT,
-                            MachineMemOperand *MMO)
-      : MemSDNode(NodeTy, Order, dl, VTs, MemVT, MMO) {}
+                            MachineMemOperand *MMO, ISD::MemIndexType IndexType)
+    : MemSDNode(NodeTy, Order, dl, VTs, MemVT, MMO) {
+    LSBaseSDNodeBits.AddressingMode = IndexType;
+    assert(getIndexType() == IndexType && "Value truncated");
+  }
+
+  /// How is Index applied to BasePtr when computing addresses.
+  ISD::MemIndexType getIndexType() const {
+    return static_cast<ISD::MemIndexType>(LSBaseSDNodeBits.AddressingMode);
+  }
+  bool isIndexScaled() const {
+    return (getIndexType() == ISD::SIGNED_SCALED) ||
+           (getIndexType() == ISD::UNSIGNED_SCALED);
+  }
+  bool isIndexSigned() const {
+    return (getIndexType() == ISD::SIGNED_SCALED) ||
+           (getIndexType() == ISD::SIGNED_UNSCALED);
+  }
 
   // In the both nodes address is Op1, mask is Op2:
   // MaskedGatherSDNode  (Chain, src0, mask, base, index), src0 is a passthru value
@@ -2138,10 +2177,18 @@ public:
 class MaskedGatherSDNode : public MaskedGatherScatterSDNode {
 public:
   friend class SelectionDAG;
-
   MaskedGatherSDNode(unsigned Order, const DebugLoc &dl, SDVTList VTs,
-                     EVT MemVT, MachineMemOperand *MMO)
-      : MaskedGatherScatterSDNode(ISD::MGATHER, Order, dl, VTs, MemVT, MMO) {}
+                     ISD::LoadExtType ETy, EVT MemVT, MachineMemOperand *MMO,
+                     ISD::MemIndexType IndexType)
+    : MaskedGatherScatterSDNode(ISD::MGATHER, Order, dl, VTs, MemVT, MMO,
+                                IndexType) {
+    LoadSDNodeBits.ExtTy = ETy;
+  }
+
+  ISD::LoadExtType getExtensionType() const {
+    return ISD::LoadExtType(LoadSDNodeBits.ExtTy);
+  }
+  const SDValue &getSrc0() const { return getValue(); }
 
   static bool classof(const SDNode *N) {
     return N->getOpcode() == ISD::MGATHER;
@@ -2155,8 +2202,17 @@ public:
   friend class SelectionDAG;
 
   MaskedScatterSDNode(unsigned Order, const DebugLoc &dl, SDVTList VTs,
-                      EVT MemVT, MachineMemOperand *MMO)
-      : MaskedGatherScatterSDNode(ISD::MSCATTER, Order, dl, VTs, MemVT, MMO) {}
+                      bool isTrunc, EVT MemVT, MachineMemOperand *MMO,
+                      ISD::MemIndexType IndexType)
+    : MaskedGatherScatterSDNode(ISD::MSCATTER, Order, dl, VTs, MemVT, MMO,
+                                IndexType) {
+    StoreSDNodeBits.IsTruncating = isTrunc;
+  }
+
+  /// Return true if the op does a truncation before store.
+  /// For integers this is the same as doing a TRUNCATE and storing the result.
+  /// For floats, it is the same as doing an FP_ROUND and storing the result.
+  bool isTruncatingStore() const { return StoreSDNodeBits.IsTruncating; }
 
   static bool classof(const SDNode *N) {
     return N->getOpcode() == ISD::MSCATTER;

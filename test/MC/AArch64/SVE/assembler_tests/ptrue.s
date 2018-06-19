@@ -1,0 +1,130 @@
+// RUN: llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -mattr=+sve < %s | FileCheck %s
+// RUN: not llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -mattr=-sve 2>&1 < %s | FileCheck --check-prefix=CHECK-ERROR %s
+ptrue   p0.b, pow2  // 00100101-00011000-11100000-00000000
+// CHECK: ptrue   p0.b, pow2 // encoding: [0x00,0xe0,0x18,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00011000-11100000-00000000
+PTRUE   P0.B, POW2  // 00100101-00011000-11100000-00000000
+// CHECK: ptrue   p0.b, pow2 // encoding: [0x00,0xe0,0x18,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00011000-11100000-00000000
+ptrue   p7.s, vl256  // 00100101-10011000-11100001-10100111
+// CHECK: ptrue   p7.s, vl256 // encoding: [0xa7,0xe1,0x98,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10011000-11100001-10100111
+PTRUE   P7.S, VL256  // 00100101-10011000-11100001-10100111
+// CHECK: ptrue   p7.s, vl256 // encoding: [0xa7,0xe1,0x98,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10011000-11100001-10100111
+ptrue   p0.h, pow2  // 00100101-01011000-11100000-00000000
+// CHECK: ptrue   p0.h, pow2 // encoding: [0x00,0xe0,0x58,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01011000-11100000-00000000
+PTRUE   P0.H, POW2  // 00100101-01011000-11100000-00000000
+// CHECK: ptrue   p0.h, pow2 // encoding: [0x00,0xe0,0x58,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01011000-11100000-00000000
+ptrue   p0.d, pow2  // 00100101-11011000-11100000-00000000
+// CHECK: ptrue   p0.d, pow2 // encoding: [0x00,0xe0,0xd8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11011000-11100000-00000000
+PTRUE   P0.D, POW2  // 00100101-11011000-11100000-00000000
+// CHECK: ptrue   p0.d, pow2 // encoding: [0x00,0xe0,0xd8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11011000-11100000-00000000
+ptrue   p5.d, vl32  // 00100101-11011000-11100001-01000101
+// CHECK: ptrue   p5.d, vl32 // encoding: [0x45,0xe1,0xd8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11011000-11100001-01000101
+PTRUE   P5.D, VL32  // 00100101-11011000-11100001-01000101
+// CHECK: ptrue   p5.d, vl32 // encoding: [0x45,0xe1,0xd8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11011000-11100001-01000101
+ptrue   p5.s, vl32  // 00100101-10011000-11100001-01000101
+// CHECK: ptrue   p5.s, vl32 // encoding: [0x45,0xe1,0x98,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10011000-11100001-01000101
+PTRUE   P5.S, VL32  // 00100101-10011000-11100001-01000101
+// CHECK: ptrue   p5.s, vl32 // encoding: [0x45,0xe1,0x98,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10011000-11100001-01000101
+ptrue   p5.b, vl32  // 00100101-00011000-11100001-01000101
+// CHECK: ptrue   p5.b, vl32 // encoding: [0x45,0xe1,0x18,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00011000-11100001-01000101
+PTRUE   P5.B, VL32  // 00100101-00011000-11100001-01000101
+// CHECK: ptrue   p5.b, vl32 // encoding: [0x45,0xe1,0x18,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00011000-11100001-01000101
+ptrue   p15.h  // 00100101-01011000-11100011-11101111
+// CHECK: ptrue   p15.h // encoding: [0xef,0xe3,0x58,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01011000-11100011-11101111
+PTRUE   P15.H  // 00100101-01011000-11100011-11101111
+// CHECK: ptrue   p15.h // encoding: [0xef,0xe3,0x58,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01011000-11100011-11101111
+ptrue   p15.s  // 00100101-10011000-11100011-11101111
+// CHECK: ptrue   p15.s // encoding: [0xef,0xe3,0x98,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10011000-11100011-11101111
+PTRUE   P15.S  // 00100101-10011000-11100011-11101111
+// CHECK: ptrue   p15.s // encoding: [0xef,0xe3,0x98,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10011000-11100011-11101111
+ptrue   p7.b, vl256  // 00100101-00011000-11100001-10100111
+// CHECK: ptrue   p7.b, vl256 // encoding: [0xa7,0xe1,0x18,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00011000-11100001-10100111
+PTRUE   P7.B, VL256  // 00100101-00011000-11100001-10100111
+// CHECK: ptrue   p7.b, vl256 // encoding: [0xa7,0xe1,0x18,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00011000-11100001-10100111
+ptrue   p15.d  // 00100101-11011000-11100011-11101111
+// CHECK: ptrue   p15.d // encoding: [0xef,0xe3,0xd8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11011000-11100011-11101111
+PTRUE   P15.D  // 00100101-11011000-11100011-11101111
+// CHECK: ptrue   p15.d // encoding: [0xef,0xe3,0xd8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11011000-11100011-11101111
+ptrue   p7.h, vl256  // 00100101-01011000-11100001-10100111
+// CHECK: ptrue   p7.h, vl256 // encoding: [0xa7,0xe1,0x58,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01011000-11100001-10100111
+PTRUE   P7.H, VL256  // 00100101-01011000-11100001-10100111
+// CHECK: ptrue   p7.h, vl256 // encoding: [0xa7,0xe1,0x58,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01011000-11100001-10100111
+ptrue   p0.s, pow2  // 00100101-10011000-11100000-00000000
+// CHECK: ptrue   p0.s, pow2 // encoding: [0x00,0xe0,0x98,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10011000-11100000-00000000
+PTRUE   P0.S, POW2  // 00100101-10011000-11100000-00000000
+// CHECK: ptrue   p0.s, pow2 // encoding: [0x00,0xe0,0x98,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10011000-11100000-00000000
+ptrue   p15.b  // 00100101-00011000-11100011-11101111
+// CHECK: ptrue   p15.b // encoding: [0xef,0xe3,0x18,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00011000-11100011-11101111
+PTRUE   P15.B  // 00100101-00011000-11100011-11101111
+// CHECK: ptrue   p15.b // encoding: [0xef,0xe3,0x18,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00011000-11100011-11101111
+ptrue   p5.h, vl32  // 00100101-01011000-11100001-01000101
+// CHECK: ptrue   p5.h, vl32 // encoding: [0x45,0xe1,0x58,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01011000-11100001-01000101
+PTRUE   P5.H, VL32  // 00100101-01011000-11100001-01000101
+// CHECK: ptrue   p5.h, vl32 // encoding: [0x45,0xe1,0x58,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01011000-11100001-01000101
+ptrue   p7.d, vl256  // 00100101-11011000-11100001-10100111
+// CHECK: ptrue   p7.d, vl256 // encoding: [0xa7,0xe1,0xd8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11011000-11100001-10100111
+PTRUE   P7.D, VL256  // 00100101-11011000-11100001-10100111
+// CHECK: ptrue   p7.d, vl256 // encoding: [0xa7,0xe1,0xd8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11011000-11100001-10100111

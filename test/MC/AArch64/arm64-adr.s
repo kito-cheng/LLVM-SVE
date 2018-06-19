@@ -1,5 +1,7 @@
 // RUN: not llvm-mc -triple arm64 -show-encoding < %s 2>%t | FileCheck %s
 // RUN: FileCheck --check-prefix=CHECK-ERRORS < %t %s
+// RUN: not llvm-mc -triple arm64 -mattr=+sve -show-encoding < %s 2>%t | FileCheck %s
+// RUN: FileCheck --check-prefix=CHECK-ERRORS < %t %s
 
 adr x0, #0
 adr x0, #1

@@ -154,7 +154,9 @@ typedef enum {
   LLVMVectorTypeKind,      /**< SIMD 'packed' format, or other vector type */
   LLVMMetadataTypeKind,    /**< Metadata */
   LLVMX86_MMXTypeKind,     /**< X86 MMX */
-  LLVMTokenTypeKind        /**< Tokens */
+  LLVMTokenTypeKind,       /**< Tokens */
+  LLVMSVEVecTypeKind,      /**< SVE Vector */
+  LLVMSVEPredTypeKind      /**< SVE Predicate */
 } LLVMTypeKind;
 
 typedef enum {
@@ -232,6 +234,8 @@ typedef enum {
   LLVMInlineAsmValueKind,
 
   LLVMInstructionValueKind,
+  LLVMVScaleValueKind,
+  LLVMStepVectorValueKind,
 } LLVMValueKind;
 
 typedef enum {
@@ -1197,7 +1201,9 @@ LLVMTypeRef LLVMX86MMXType(void);
         macro(GlobalObject)                 \
           macro(Function)                   \
           macro(GlobalVariable)             \
+      macro(StepVector)                     \
       macro(UndefValue)                     \
+      macro(VScale)                         \
     macro(Instruction)                      \
       macro(BinaryOperator)                 \
       macro(CallInst)                       \

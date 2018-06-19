@@ -287,7 +287,9 @@ CodeExtractor::findOrCreateBlockForHoisting(BasicBlock *CommonExitBlock) {
   BasicBlock *NewExitBlock = CommonExitBlock->splitBasicBlock(
       CommonExitBlock->getFirstNonPHI()->getIterator());
 
-  for (auto *Pred : predecessors(CommonExitBlock)) {
+  // Convert to vector before iterating to ensure the iterator
+  // is not invalidated by the call to replaceUsesOfWith
+  for (auto *Pred : to_vector<8>(predecessors(CommonExitBlock))) {
     if (Blocks.count(Pred))
       continue;
     Pred->getTerminator()->replaceUsesOfWith(CommonExitBlock, NewExitBlock);

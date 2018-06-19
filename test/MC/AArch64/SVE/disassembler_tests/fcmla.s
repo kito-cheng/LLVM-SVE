@@ -1,0 +1,62 @@
+# RUN: llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -disassemble -mattr=+sve < %s | FileCheck %s
+# RUN: llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -disassemble -mattr=-sve 2>&1 < %s | FileCheck --check-prefix=CHECK-ERROR  %s
+0x55,0x15,0xb5,0x64
+# CHECK: fcmla   z21.h, z10.h, z5.h[2], #90 // encoding: [0x55,0x15,0xb5,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0x55,0x55,0xd5,0x64
+# CHECK: fcmla   z21.d, p5/m, z10.d, z21.d, #180 // encoding: [0x55,0x55,0xd5,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0x55,0x55,0x95,0x64
+# CHECK: fcmla   z21.s, p5/m, z10.s, z21.s, #180 // encoding: [0x55,0x55,0x95,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0xb7,0x6d,0xc8,0x64
+# CHECK: fcmla   z23.d, p3/m, z13.d, z8.d, #270 // encoding: [0xb7,0x6d,0xc8,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0xb7,0x1d,0xe8,0x64
+# CHECK: fcmla   z23.s, z13.s, z8.s[0], #270 // encoding: [0xb7,0x1d,0xe8,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0xb7,0x6d,0x48,0x64
+# CHECK: fcmla   z23.h, p3/m, z13.h, z8.h, #270 // encoding: [0xb7,0x6d,0x48,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0xff,0x7f,0xdf,0x64
+# CHECK: fcmla   z31.d, p7/m, z31.d, z31.d, #270 // encoding: [0xff,0x7f,0xdf,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0x55,0x55,0x55,0x64
+# CHECK: fcmla   z21.h, p5/m, z10.h, z21.h, #180 // encoding: [0x55,0x55,0x55,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0x00,0x10,0xa0,0x64
+# CHECK: fcmla   z0.h, z0.h, z0.h[0], #0 // encoding: [0x00,0x10,0xa0,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0xff,0x7f,0x5f,0x64
+# CHECK: fcmla   z31.h, p7/m, z31.h, z31.h, #270 // encoding: [0xff,0x7f,0x5f,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0x00,0x00,0xc0,0x64
+# CHECK: fcmla   z0.d, p0/m, z0.d, z0.d, #0 // encoding: [0x00,0x00,0xc0,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0xff,0x1f,0xff,0x64
+# CHECK: fcmla   z31.s, z31.s, z15.s[1], #270 // encoding: [0xff,0x1f,0xff,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0xb7,0x6d,0x88,0x64
+# CHECK: fcmla   z23.s, p3/m, z13.s, z8.s, #270 // encoding: [0xb7,0x6d,0x88,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0x00,0x10,0xe0,0x64
+# CHECK: fcmla   z0.s, z0.s, z0.s[0], #0 // encoding: [0x00,0x10,0xe0,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0x00,0x00,0x80,0x64
+# CHECK: fcmla   z0.s, p0/m, z0.s, z0.s, #0 // encoding: [0x00,0x00,0x80,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0x00,0x00,0x40,0x64
+# CHECK: fcmla   z0.h, p0/m, z0.h, z0.h, #0 // encoding: [0x00,0x00,0x40,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0xff,0x1f,0xbf,0x64
+# CHECK: fcmla   z31.h, z31.h, z7.h[3], #270 // encoding: [0xff,0x1f,0xbf,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0xff,0x7f,0x9f,0x64
+# CHECK: fcmla   z31.s, p7/m, z31.s, z31.s, #270 // encoding: [0xff,0x7f,0x9f,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0x55,0x15,0xf5,0x64
+# CHECK: fcmla   z21.s, z10.s, z5.s[1], #90 // encoding: [0x55,0x15,0xf5,0x64]
+# CHECK-ERROR: invalid instruction encoding
+0xb7,0x1d,0xa8,0x64
+# CHECK: fcmla   z23.h, z13.h, z0.h[1], #270 // encoding: [0xb7,0x1d,0xa8,0x64]
+# CHECK-ERROR: invalid instruction encoding

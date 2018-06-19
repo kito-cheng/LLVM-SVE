@@ -144,6 +144,8 @@ unsigned MachineFrameInfo::estimateStackSize(const MachineFunction &MF) const {
   for (unsigned i = 0, e = getObjectIndexEnd(); i != e; ++i) {
     if (isDeadObjectIndex(i))
       continue;
+    if (MF.getFrameInfo().getObjectRegion(i) != nullptr)
+      continue;
     Offset += getObjectSize(i);
     unsigned Align = getObjectAlignment(i);
     // Adjust to alignment boundary

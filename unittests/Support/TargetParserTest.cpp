@@ -461,8 +461,9 @@ TEST(TargetParserTest, ARMFPURestriction) {
 TEST(TargetParserTest, ARMExtensionFeatures) {
   std::vector<StringRef> Features;
   unsigned Extensions = ARM::AEK_CRC | ARM::AEK_CRYPTO | ARM::AEK_DSP |
-                        ARM::AEK_HWDIVARM | ARM::AEK_HWDIVTHUMB | ARM::AEK_MP |
-                        ARM::AEK_SEC | ARM::AEK_VIRT | ARM::AEK_RAS;
+                        ARM::AEK_HWDIVARM | ARM::AEK_MP |
+                        ARM::AEK_SEC | ARM::AEK_VIRT | ARM::AEK_RAS |
+                        ARM::AEK_DOTPROD;
 
   for (unsigned i = 0; i <= Extensions; i++)
     EXPECT_TRUE(i == 0 ? !ARM::getExtensionFeatures(i, Features)
@@ -763,6 +764,7 @@ TEST(TargetParserTest, AArch64ArchExtFeature) {
                               {"fp16", "nofp16", "+fullfp16", "-fullfp16"},
                               {"profile", "noprofile", "+spe", "-spe"},
                               {"ras", "noras", "+ras", "-ras"},
+                              {"dotprod", "nodotprod", "+dotprod", "-dotprod"},
                               {"sve", "nosve", "+sve", "-sve"}};
 
   for (unsigned i = 0; i < array_lengthof(ArchExt); i++) {

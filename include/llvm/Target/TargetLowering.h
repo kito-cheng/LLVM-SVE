@@ -87,6 +87,7 @@ class Module;
 class TargetRegisterClass;
 class TargetLibraryInfo;
 class TargetRegisterInfo;
+class TargetTransformInfo;
 class Value;
 
 namespace Sched {
@@ -1035,7 +1036,7 @@ public:
       }
 
       return EVT::getVectorVT(Ty->getContext(), EVT::getEVT(Elm, false),
-                       VTy->getNumElements());
+                              VTy->getNumElements(), VTy->isScalable());
     }
     return EVT::getEVT(Ty, AllowUnknown);
   }
@@ -2111,6 +2112,36 @@ public:
   /// \p Factor is the interleave factor.
   virtual bool lowerInterleavedStore(StoreInst *SI, ShuffleVectorInst *SVI,
                                      unsigned Factor) const {
+    return false;
+  }
+
+  /// \brief Lower a set of compatible gather load intrinsics to an interleaved
+  /// load.  Return true on success.
+  ///
+  /// \p Gathers is the list of gather instructions
+  /// \p ReplaceNode points to where the replacement nodes should be built
+  ///    (this should be the first gather in instruction order)
+  /// \p Factor is the interleave factor
+  virtual bool lowerGathersToInterleavedLoad(ArrayRef<Value *> Gathers,
+                                             IntrinsicInst *ReplaceNode,
+                                             unsigned Factor,
+                                             TargetTransformInfo *TTI) const {
+    return false;
+  }
+
+  /// \brief Lower a set of compatible scatter store intrinsics to an
+  /// interleaved store.  Return true on success.
+  ///
+  /// \p ValuesToStore is the list of values stored, in memory order
+  /// \p FirstScatterAddress is the address ptr from the first scatter
+  /// \p ReplaceNode points to where the replacement nodes should be built
+  ///    (this should be the last scatter in instruction order)
+  /// \p Factor is the interleave factor
+  virtual bool lowerScattersToInterleavedStore(ArrayRef<Value *> ValuesToStore,
+                                               Value *FirstScatterAddress,
+                                               IntrinsicInst *ReplaceNode,
+                                               unsigned Factor,
+                                               TargetTransformInfo *TTI) const {
     return false;
   }
 

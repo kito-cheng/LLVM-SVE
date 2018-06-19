@@ -62,6 +62,11 @@ inline unsigned ComputeLinearIndex(Type *Ty,
   return ComputeLinearIndex(Ty, Indices.begin(), Indices.end(), CurIndex);
 }
 
+struct FieldOffsets {
+  uint64_t UnscaledBytes;
+  uint64_t ScaledBytes;
+};
+
 /// ComputeValueVTs - Given an LLVM IR type, compute a sequence of
 /// EVTs that represent all the individual underlying
 /// non-aggregate types that comprise it.
@@ -71,8 +76,8 @@ inline unsigned ComputeLinearIndex(Type *Ty,
 ///
 void ComputeValueVTs(const TargetLowering &TLI, const DataLayout &DL, Type *Ty,
                      SmallVectorImpl<EVT> &ValueVTs,
-                     SmallVectorImpl<uint64_t> *Offsets = nullptr,
-                     uint64_t StartingOffset = 0);
+                     SmallVectorImpl<FieldOffsets> *Offsets = nullptr,
+                     FieldOffsets StartingOffset = {0,0});
 
 /// ExtractTypeInfo - Returns the type info, possibly bitcast, encoded in V.
 GlobalValue *ExtractTypeInfo(Value *V);

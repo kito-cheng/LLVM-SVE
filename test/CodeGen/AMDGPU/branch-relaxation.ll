@@ -438,10 +438,9 @@ endif:
 ; GCN-NEXT: s_and_saveexec_b64 [[MASK:s\[[0-9]+:[0-9]+\]]], vcc
 ; GCN-NEXT: s_xor_b64 [[MASK]], exec, [[MASK]]
 ; GCN-NEXT: ; mask branch [[RET:BB[0-9]+_[0-9]+]]
-; GCN-NEXT: s_cbranch_execz [[BRANCH_SKIP:BB[0-9]+_[0-9]+]]
-; GCN-NEXT: s_branch [[LOOP_BODY:BB[0-9]+_[0-9]+]]
+; GCN-NEXT: s_cbranch_execnz [[LOOP_BODY:BB[0-9]+_[0-9]+]]
 
-; GCN-NEXT: [[BRANCH_SKIP]]: ; %entry
+; GCN-NEXT: [[BRANCH_SKIP:BB[0-9]+_[0-9]+]]: ; %entry
 ; GCN-NEXT: s_getpc_b64 vcc
 ; GCN-NEXT: s_add_u32 vcc_lo, vcc_lo, [[RET]]-([[BRANCH_SKIP]]+4)
 ; GCN-NEXT: s_addc_u32 vcc_hi, vcc_hi, 0
@@ -499,8 +498,7 @@ ret:
 
 ; GCN-LABEL: {{^}}long_branch_hang:
 ; GCN: s_cmp_lt_i32 s{{[0-9]+}}, 6
-; GCN-NEXT: s_cbranch_scc1 {{BB[0-9]+_[0-9]+}}
-; GCN-NEXT: s_branch [[LONG_BR_0:BB[0-9]+_[0-9]+]]
+; GCN-NEXT: s_cbranch_scc0 [[LONG_BR_0:BB[0-9]+_[0-9]+]]
 ; GCN-NEXT: BB{{[0-9]+_[0-9]+}}:
 
 ; GCN: s_add_u32 vcc_lo, vcc_lo, [[LONG_BR_DEST0:BB[0-9]+_[0-9]+]]-(

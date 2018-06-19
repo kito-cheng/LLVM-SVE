@@ -25,4 +25,5 @@ add_llvm_unittest(AnalysisTests
   TBAATest.cpp
   UnrollAnalyzer.cpp
   ValueTrackingTest.cpp
+  OpenMP.cpp
   )

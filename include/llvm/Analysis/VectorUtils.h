@@ -43,11 +43,17 @@ bool isTriviallyVectorizable(Intrinsic::ID ID);
 /// ctlz,cttz and powi special intrinsics whose argument is scalar.
 bool hasVectorInstrinsicScalarOpd(Intrinsic::ID ID, unsigned ScalarOpdIdx);
 
+/// \brief Returns true if the given vector intrinsic is maskable, and the
+/// position of the mask parameter if available.
+std::pair<bool,unsigned> isMaskedVectorIntrinsic(Intrinsic::ID ID);
+
 /// \brief Returns intrinsic ID for call.
 /// For the input call instruction it finds mapping intrinsic and returns
 /// its intrinsic ID, in case it does not found it return not_intrinsic.
+/// If UseMask is true, then find a masking vectorized function if available.
 Intrinsic::ID getVectorIntrinsicIDForCall(const CallInst *CI,
-                                          const TargetLibraryInfo *TLI);
+                                          const TargetLibraryInfo *TLI,
+                                          bool UseMask = false);
 
 /// \brief Find the operand of the GEP that should be checked for consecutive
 /// stores. This ignores trailing indices that have no effect on the final
@@ -114,6 +120,23 @@ MapVector<Instruction*, uint64_t>
 computeMinimumValueSizes(ArrayRef<BasicBlock*> Blocks,
                          DemandedBits &DB,
                          const TargetTransformInfo *TTI=nullptr);
+
+// Temporary helper function to implement what was 'test any_true' using
+// vector reductions. Only targets AArch64 SVE.
+Value *getAnyTrueReduction(IRBuilder<> &Builder, Value *Src,
+                           const Twine &Name = "");
+// Temporary helper function to implement what was 'test all_true' using
+// vector reductions. Only targets AArch64 SVE.
+Value *getAllTrueReduction(IRBuilder<> &Builder, Value *Src,
+                           const Twine &Name = "");
+// Temporary helper function to implement what was 'test all_false' using
+// vector reductions. Only targets AArch64 SVE.
+Value *getAllFalseReduction(IRBuilder<> &Builder, Value *Src,
+                            const Twine &Name = "");
+// Helper function to implement what was 'test 'last_true' using
+// extractelement.
+Value *getLastTrueVector(IRBuilder<> &Builder, Value *Src,
+                         const Twine &Name = "");
 
 /// Specifically, let Kinds = [MD_tbaa, MD_alias_scope, MD_noalias, MD_fpmath,
 /// MD_nontemporal].  For K in Kinds, we get the MDNode for K from each of the

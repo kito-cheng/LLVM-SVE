@@ -1207,7 +1207,12 @@ bool StackColoring::runOnMachineFunction(MachineFunction &Func) {
     // We use -1 to denote a uninteresting slot. Place these slots at the end.
     if (LHS == -1) return false;
     if (RHS == -1) return true;
-    // Sort according to size.
+
+    // First sort according to Region
+    if (MFI->getObjectRegion(LHS) != MFI->getObjectRegion(RHS))
+      return MFI->getObjectRegion(LHS) > MFI->getObjectRegion(RHS);
+
+    // Then sort according to size.
     return MFI->getObjectSize(LHS) > MFI->getObjectSize(RHS);
   });
 
@@ -1227,6 +1232,11 @@ bool StackColoring::runOnMachineFunction(MachineFunction &Func) {
 
         int FirstSlot = SortedSlots[I];
         int SecondSlot = SortedSlots[J];
+
+        // StackRegions must match
+        if (MFI->getObjectRegion(FirstSlot) != MFI->getObjectRegion(SecondSlot))
+          continue;
+
         LiveInterval *First = &*Intervals[FirstSlot];
         LiveInterval *Second = &*Intervals[SecondSlot];
         auto &FirstS = LiveStarts[FirstSlot];

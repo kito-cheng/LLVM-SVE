@@ -96,6 +96,7 @@
 #include "llvm/Transforms/Utils/LoopSimplify.h"
 #include "llvm/Transforms/Utils/LoopUtils.h"
 #include "llvm/Transforms/Utils/LoopVersioning.h"
+#include "llvm/Transforms/LVCommon.h"
 #include "llvm/Transforms/Vectorize.h"
 #include <algorithm>
 #include <map>
@@ -110,112 +111,12 @@ using namespace llvm::PatternMatch;
 STATISTIC(LoopsVectorized, "Number of loops vectorized");
 STATISTIC(LoopsAnalyzed, "Number of loops analyzed for vectorization");
 
-static cl::opt<bool>
-    EnableIfConversion("enable-if-conversion", cl::init(true), cl::Hidden,
-                       cl::desc("Enable if-conversion during vectorization."));
-
-/// Loops with a known constant trip count below this number are vectorized only
-/// if no scalar iteration overheads are incurred.
-static cl::opt<unsigned> TinyTripCountVectorThreshold(
-    "vectorizer-min-trip-count", cl::init(16), cl::Hidden,
-    cl::desc("Loops with a constant trip count that is smaller than this "
-             "value are vectorized only if no scalar iteration overheads "
-             "are incurred."));
-
-static cl::opt<bool> MaximizeBandwidth(
-    "vectorizer-maximize-bandwidth", cl::init(false), cl::Hidden,
-    cl::desc("Maximize bandwidth when selecting vectorization factor which "
-             "will be determined by the smallest type in loop."));
-
-static cl::opt<bool> EnableInterleavedMemAccesses(
-    "enable-interleaved-mem-accesses", cl::init(false), cl::Hidden,
-    cl::desc("Enable vectorization on interleaved memory accesses in a loop"));
-
-/// Maximum factor for an interleaved memory access.
-static cl::opt<unsigned> MaxInterleaveGroupFactor(
-    "max-interleave-group-factor", cl::Hidden,
-    cl::desc("Maximum factor for an interleaved access group (default = 8)"),
-    cl::init(8));
-
 /// We don't interleave loops with a known constant trip count below this
 /// number.
 static const unsigned TinyTripCountInterleaveThreshold = 128;
 
-static cl::opt<unsigned> ForceTargetNumScalarRegs(
-    "force-target-num-scalar-regs", cl::init(0), cl::Hidden,
-    cl::desc("A flag that overrides the target's number of scalar registers."));
-
-static cl::opt<unsigned> ForceTargetNumVectorRegs(
-    "force-target-num-vector-regs", cl::init(0), cl::Hidden,
-    cl::desc("A flag that overrides the target's number of vector registers."));
-
 /// Maximum vectorization interleave count.
-static const unsigned MaxInterleaveFactor = 16;
-
-static cl::opt<unsigned> ForceTargetMaxScalarInterleaveFactor(
-    "force-target-max-scalar-interleave", cl::init(0), cl::Hidden,
-    cl::desc("A flag that overrides the target's max interleave factor for "
-             "scalar loops."));
-
-static cl::opt<unsigned> ForceTargetMaxVectorInterleaveFactor(
-    "force-target-max-vector-interleave", cl::init(0), cl::Hidden,
-    cl::desc("A flag that overrides the target's max interleave factor for "
-             "vectorized loops."));
-
-static cl::opt<unsigned> ForceTargetInstructionCost(
-    "force-target-instruction-cost", cl::init(0), cl::Hidden,
-    cl::desc("A flag that overrides the target's expected cost for "
-             "an instruction to a single constant value. Mostly "
-             "useful for getting consistent testing."));
-
-static cl::opt<unsigned> SmallLoopCost(
-    "small-loop-cost", cl::init(20), cl::Hidden,
-    cl::desc(
-        "The cost of a loop that is considered 'small' by the interleaver."));
-
-static cl::opt<bool> LoopVectorizeWithBlockFrequency(
-    "loop-vectorize-with-block-frequency", cl::init(false), cl::Hidden,
-    cl::desc("Enable the use of the block frequency analysis to access PGO "
-             "heuristics minimizing code growth in cold regions and being more "
-             "aggressive in hot regions."));
-
-// Runtime interleave loops for load/store throughput.
-static cl::opt<bool> EnableLoadStoreRuntimeInterleave(
-    "enable-loadstore-runtime-interleave", cl::init(true), cl::Hidden,
-    cl::desc(
-        "Enable runtime interleaving until load/store ports are saturated"));
-
-/// The number of stores in a loop that are allowed to need predication.
-static cl::opt<unsigned> NumberOfStoresToPredicate(
-    "vectorize-num-stores-pred", cl::init(1), cl::Hidden,
-    cl::desc("Max number of stores to be predicated behind an if."));
-
-static cl::opt<bool> EnableIndVarRegisterHeur(
-    "enable-ind-var-reg-heur", cl::init(true), cl::Hidden,
-    cl::desc("Count the induction variable only once when interleaving"));
-
-static cl::opt<bool> EnableCondStoresVectorization(
-    "enable-cond-stores-vec", cl::init(true), cl::Hidden,
-    cl::desc("Enable if predication of stores during vectorization."));
-
-static cl::opt<unsigned> MaxNestedScalarReductionIC(
-    "max-nested-scalar-reduction-interleave", cl::init(2), cl::Hidden,
-    cl::desc("The maximum interleave count to use when interleaving a scalar "
-             "reduction in a nested loop."));
-
-static cl::opt<unsigned> PragmaVectorizeMemoryCheckThreshold(
-    "pragma-vectorize-memory-check-threshold", cl::init(128), cl::Hidden,
-    cl::desc("The maximum allowed number of runtime memory checks with a "
-             "vectorize(enable) pragma."));
-
-static cl::opt<unsigned> VectorizeSCEVCheckThreshold(
-    "vectorize-scev-check-threshold", cl::init(16), cl::Hidden,
-    cl::desc("The maximum number of SCEV checks allowed."));
-
-static cl::opt<unsigned> PragmaVectorizeSCEVCheckThreshold(
-    "pragma-vectorize-scev-check-threshold", cl::init(128), cl::Hidden,
-    cl::desc("The maximum number of SCEV checks allowed with a "
-             "vectorize(enable) pragma"));
+const unsigned MaxInterleaveFactor = 16;
 
 /// Create an analysis remark that explains why vectorization failed
 ///
@@ -228,17 +129,19 @@ static OptimizationRemarkAnalysis
 createMissedAnalysis(const char *PassName, StringRef RemarkName, Loop *TheLoop,
                      Instruction *I = nullptr) {
   Value *CodeRegion = TheLoop->getHeader();
-  DebugLoc DL = TheLoop->getStartLoc();
+  DebugLoc StartLoc = TheLoop->getLocRange().getStart();
+  DebugLoc EndLoc = TheLoop->getLocRange().getEnd();
 
   if (I) {
     CodeRegion = I->getParent();
     // If there is no debug location attached to the instruction, revert back to
     // using the loop's.
     if (I->getDebugLoc())
-      DL = I->getDebugLoc();
+      StartLoc = EndLoc = I->getDebugLoc();
   }
 
-  OptimizationRemarkAnalysis R(PassName, RemarkName, DL, CodeRegion);
+  auto LocRange = DiagnosticLocation(StartLoc, EndLoc);
+  OptimizationRemarkAnalysis R(PassName, RemarkName, LocRange, CodeRegion);
   R << "loop not vectorized: ";
   return R;
 }
@@ -1534,12 +1437,14 @@ static void emitMissedWarning(Function *F, Loop *L,
     if (LH.getWidth() != 1)
       ORE->emit(DiagnosticInfoOptimizationFailure(
                     DEBUG_TYPE, "FailedRequestedVectorization",
-                    L->getStartLoc(), L->getHeader())
+                    {L->getLocRange().getStart(), L->getLocRange().getEnd()},
+                    L->getHeader())
                 << "loop not vectorized: "
                 << "failed explicitly specified loop vectorization");
     else if (LH.getInterleave() != 1)
       ORE->emit(DiagnosticInfoOptimizationFailure(
-                    DEBUG_TYPE, "FailedRequestedInterleaving", L->getStartLoc(),
+                    DEBUG_TYPE, "FailedRequestedInterleaving",
+                    {L->getLocRange().getStart(), L->getLocRange().getEnd()},
                     L->getHeader())
                 << "loop not interleaved: "
                 << "failed explicitly specified loop interleaving");
@@ -2203,6 +2108,14 @@ public:
   SmallPtrSet<const Value *, 16> ValuesToIgnore;
   /// Values to ignore in the cost model when VF > 1.
   SmallPtrSet<const Value *, 16> VecValuesToIgnore;
+
+  /// Estimate cost of a call instruction CI if it were vectorized
+  /// with factor VF.  Return the cost of the instruction, including
+  /// scalarization overhead if it's needed. The flag NeedToScalarize
+  /// shows if the call needs to be scalarized - i.e. either vector
+  /// version isn't available, or is too expensive.
+  unsigned getVectorCallCost(CallInst *CI, unsigned VF,
+                             bool &NeedToScalarize) const;
 };
 
 /// LoopVectorizationPlanner - drives the vectorization process after having
@@ -2393,7 +2306,7 @@ Value *InnerLoopVectorizer::getBroadcastInstrs(Value *V) {
     Builder.SetInsertPoint(LoopVectorPreHeader->getTerminator());
 
   // Broadcast the scalar into all locations in the vector.
-  Value *Shuf = Builder.CreateVectorSplat(VF, V, "broadcast");
+  Value *Shuf = Builder.CreateVectorSplat({VF, false}, V, "broadcast");
 
   return Shuf;
 }
@@ -2412,7 +2325,7 @@ void InnerLoopVectorizer::createVectorIntOrFpInductionPHI(
     Step = Builder.CreateTrunc(Step, TruncType);
     Start = Builder.CreateCast(Instruction::Trunc, Start, TruncType);
   }
-  Value *SplatStart = Builder.CreateVectorSplat(VF, Start);
+  Value *SplatStart = Builder.CreateVectorSplat({VF, false}, Start);
   Value *SteppedStart =
       getStepVector(SplatStart, 0, Step, II.getInductionOpcode());
 
@@ -2439,8 +2352,8 @@ void InnerLoopVectorizer::createVectorIntOrFpInductionPHI(
   //        IRBuilder. IRBuilder can constant-fold the multiply, but it doesn't
   //        handle a constant vector splat.
   Value *SplatVF = isa<Constant>(Mul)
-                       ? ConstantVector::getSplat(VF, cast<Constant>(Mul))
-                       : Builder.CreateVectorSplat(VF, Mul);
+                    ? ConstantVector::getSplat({VF, false}, cast<Constant>(Mul))
+                    : Builder.CreateVectorSplat({VF, false}, Mul);
   Builder.restoreIP(CurrIP);
 
   // We may need to add the step a number of times, depending on the unroll
@@ -2583,7 +2496,7 @@ Value *InnerLoopVectorizer::getStepVector(Value *Val, int StartIdx, Value *Step,
                                           Instruction::BinaryOps BinOp) {
   // Create and check the types.
   assert(Val->getType()->isVectorTy() && "Must be a vector");
-  int VLen = Val->getType()->getVectorNumElements();
+  unsigned VLen = Val->getType()->getVectorNumElements();
 
   Type *STy = Val->getType()->getScalarType();
   assert((STy->isIntegerTy() || STy->isFloatingPointTy()) &&
@@ -2594,13 +2507,13 @@ Value *InnerLoopVectorizer::getStepVector(Value *Val, int StartIdx, Value *Step,
 
   if (STy->isIntegerTy()) {
     // Create a vector of consecutive numbers from zero to VF.
-    for (int i = 0; i < VLen; ++i)
+    for (int i = 0; i < (int)VLen; ++i)
       Indices.push_back(ConstantInt::get(STy, StartIdx + i));
 
     // Add the consecutive indices to the vector value.
     Constant *Cv = ConstantVector::get(Indices);
     assert(Cv->getType() == Val->getType() && "Invalid consecutive vec");
-    Step = Builder.CreateVectorSplat(VLen, Step);
+    Step = Builder.CreateVectorSplat({VLen, false}, Step);
     assert(Step->getType() == Val->getType() && "Invalid step vec");
     // FIXME: The newly created binary instructions should contain nsw/nuw flags,
     // which can be found from the original scalar operations.
@@ -2612,13 +2525,13 @@ Value *InnerLoopVectorizer::getStepVector(Value *Val, int StartIdx, Value *Step,
   assert((BinOp == Instruction::FAdd || BinOp == Instruction::FSub) &&
          "Binary Opcode should be specified for FP induction");
   // Create a vector of consecutive numbers from zero to VF.
-  for (int i = 0; i < VLen; ++i)
+  for (int i = 0; i < (int)VLen; ++i)
     Indices.push_back(ConstantFP::get(STy, (double)(StartIdx + i)));
 
   // Add the consecutive indices to the vector value.
   Constant *Cv = ConstantVector::get(Indices);
 
-  Step = Builder.CreateVectorSplat(VLen, Step);
+  Step = Builder.CreateVectorSplat({VLen, false}, Step);
 
   // Floating point operations had to be 'fast' to enable the induction.
   FastMathFlags Flags;
@@ -3696,14 +3609,9 @@ static unsigned getScalarizationOverhead(Instruction *I, unsigned VF,
   return Cost;
 }
 
-// Estimate cost of a call instruction CI if it were vectorized with factor VF.
-// Return the cost of the instruction, including scalarization overhead if it's
-// needed. The flag NeedToScalarize shows if the call needs to be scalarized -
-// i.e. either vector version isn't available, or is too expensive.
-static unsigned getVectorCallCost(CallInst *CI, unsigned VF,
-                                  const TargetTransformInfo &TTI,
-                                  const TargetLibraryInfo *TLI,
-                                  bool &NeedToScalarize) {
+unsigned
+LoopVectorizationCostModel::getVectorCallCost(CallInst *CI, unsigned VF,
+                                              bool &NeedToScalarize) const {
   Function *F = CI->getCalledFunction();
   StringRef FnName = CI->getCalledFunction()->getName();
   Type *ScalarRetTy = CI->getType();
@@ -3721,9 +3629,13 @@ static unsigned getVectorCallCost(CallInst *CI, unsigned VF,
 
   // Compute corresponding vector type for return value and arguments.
   Type *RetTy = ToVectorTy(ScalarRetTy, VF);
-  for (Type *ScalarTy : ScalarTys)
-    Tys.push_back(ToVectorTy(ScalarTy, VF));
-
+  for (auto &Op : CI->arg_operands()) {
+    Type *ScalarTy = Op->getType();
+    if (ScalarTy->isPointerTy() && Legal->isConsecutivePtr(Op))
+      Tys.push_back(ScalarTy);
+    else
+      Tys.push_back(ToVectorTy(ScalarTy, VF));
+  }
   // Compute costs of unpacking argument values for the scalar calls and
   // packing the return values to a vector.
   unsigned ScalarizationCost = getScalarizationOverhead(CI, VF, TTI);
@@ -3733,7 +3645,10 @@ static unsigned getVectorCallCost(CallInst *CI, unsigned VF,
   // If we can't emit a vector call for this function, then the currently found
   // cost is the cost we need to return.
   NeedToScalarize = true;
-  if (!TLI || !TLI->isFunctionVectorizable(FnName, VF) || CI->isNoBuiltin())
+  if (!TLI ||
+      !TLI->isFunctionVectorizable(FnName, VF,
+                                   FunctionType::get(RetTy, Tys, false)) ||
+      CI->isNoBuiltin())
     return Cost;
 
   // If the corresponding vector cost is cheaper, return its cost.
@@ -4159,8 +4074,8 @@ void InnerLoopVectorizer::fixReduction(PHINode *Phi) {
     if (VF == 1) {
       VectorStart = Identity = ReductionStartValue;
     } else {
-      VectorStart = Identity =
-        Builder.CreateVectorSplat(VF, ReductionStartValue, "minmax.ident");
+      VectorStart = Identity = Builder.CreateVectorSplat(
+          {VF, false}, ReductionStartValue, "minmax.ident");
     }
   } else {
     // Handle other reduction kinds:
@@ -4172,7 +4087,7 @@ void InnerLoopVectorizer::fixReduction(PHINode *Phi) {
       // incoming scalar reduction.
       VectorStart = ReductionStartValue;
     } else {
-      Identity = ConstantVector::getSplat(VF, Iden);
+      Identity = ConstantVector::getSplat({VF, false}, Iden);
 
       // This vector is the Identity vector where the first element is the
       // incoming scalar reduction.
@@ -4733,7 +4648,7 @@ void InnerLoopVectorizer::vectorizeInstruction(Instruction &I) {
       //       the lane-zero scalar value.
       auto *Clone = Builder.Insert(GEP->clone());
       for (unsigned Part = 0; Part < UF; ++Part) {
-        Value *EntryPart = Builder.CreateVectorSplat(VF, Clone);
+        Value *EntryPart = Builder.CreateVectorSplat({VF, false}, Clone);
         VectorLoopValueMap.setVectorValue(&I, Part, EntryPart);
         addMetadata(EntryPart, GEP);
       }
@@ -4928,10 +4843,6 @@ void InnerLoopVectorizer::vectorizeInstruction(Instruction &I) {
     StringRef FnName = CI->getCalledFunction()->getName();
     Function *F = CI->getCalledFunction();
     Type *RetTy = ToVectorTy(CI->getType(), VF);
-    SmallVector<Type *, 4> Tys;
-    for (Value *ArgOperand : CI->arg_operands())
-      Tys.push_back(ToVectorTy(ArgOperand->getType(), VF));
-
     Intrinsic::ID ID = getVectorIntrinsicIDForCall(CI, TLI);
     if (ID && (ID == Intrinsic::assume || ID == Intrinsic::lifetime_end ||
                ID == Intrinsic::lifetime_start)) {
@@ -4942,7 +4853,7 @@ void InnerLoopVectorizer::vectorizeInstruction(Instruction &I) {
     // version of the instruction.
     // Is it beneficial to perform intrinsic call compared to lib call?
     bool NeedToScalarize;
-    unsigned CallCost = getVectorCallCost(CI, VF, *TTI, TLI, NeedToScalarize);
+    unsigned CallCost = Cost->getVectorCallCost(CI, VF, NeedToScalarize);
     bool UseVectorIntrinsic =
         ID && getVectorIntrinsicCost(CI, VF, *TTI, TLI) <= CallCost;
     if (!UseVectorIntrinsic && NeedToScalarize) {
@@ -4969,13 +4880,31 @@ void InnerLoopVectorizer::vectorizeInstruction(Instruction &I) {
           TysForDecl[0] = VectorType::get(CI->getType()->getScalarType(), VF);
         VectorF = Intrinsic::getDeclaration(M, ID, TysForDecl);
       } else {
+
+        SmallVector<Type *, 4> Tys;
+        for (unsigned i = 0, ie = CI->getNumArgOperands(); i != ie; ++i) {
+          Value *Arg = CI->getArgOperand(i);
+          // Check if the argument `x` is a pointer marked by an
+          // OpenMP clause `linear(x:1)`.
+          if (Arg->getType()->isPointerTy() &&
+              (Legal->isConsecutivePtr(Arg) == 1) &&
+              isa<VectorType>(Args[i]->getType())) {
+            DEBUG(dbgs() << "LV: vectorizing " << *Arg
+                         << " as a linear pointer with step 1");
+            Args[i] =
+                Builder.CreateExtractElement(Args[i], Builder.getInt32(0));
+            Tys.push_back(Arg->getType());
+          } else
+            Tys.push_back(ToVectorTy(Arg->getType(), VF));
+        }
+
         // Use vector version of the library call.
-        StringRef VFnName = TLI->getVectorizedFunction(FnName, VF);
+        FunctionType *FTy = FunctionType::get(RetTy, Tys, false);
+        const std::string VFnName = TLI->getVectorizedFunction(FnName, VF, FTy);
         assert(!VFnName.empty() && "Vector function name is empty.");
         VectorF = M->getFunction(VFnName);
         if (!VectorF) {
           // Generate a declaration
-          FunctionType *FTy = FunctionType::get(RetTy, Tys, false);
           VectorF =
               Function::Create(FTy, Function::ExternalLinkage, VFnName, M);
           VectorF->copyAttributesFrom(F);
@@ -4986,6 +4915,7 @@ void InnerLoopVectorizer::vectorizeInstruction(Instruction &I) {
       SmallVector<OperandBundleDef, 1> OpBundles;
       CI->getOperandBundlesAsDefs(OpBundles);
       CallInst *V = Builder.CreateCall(VectorF, Args, OpBundles);
+      TLI->setCallingConv(V);
 
       if (isa<FPMathOperator>(V))
         V->copyFastMathFlags(CI);
@@ -5075,13 +5005,23 @@ bool LoopVectorizationLegality::canVectorizeWithIfConvert() {
     // We must be able to predicate all blocks that need to be predicated.
     if (blockNeedsPredication(BB)) {
       if (!blockCanBePredicated(BB, SafePointes)) {
-        ORE->emit(createMissedAnalysis("NoCFGForSelect", BB->getTerminator())
-                  << "control flow cannot be substituted for a select");
+        auto R = createMissedAnalysis("NoCFGForSelect");
+
+        R << "control flow cannot be substituted for a select";
+        if (auto *PredB = BB->getSinglePredecessor())
+          R << ore::setExtraArgs() << ore::NV("Cmp", PredB->getTerminator());
+
+        ORE->emit(R);
         return false;
       }
     } else if (BB != Header && !canIfConvertPHINodes(BB)) {
-      ORE->emit(createMissedAnalysis("NoCFGForSelect", BB->getTerminator())
-                << "control flow cannot be substituted for a select");
+      auto R = createMissedAnalysis("NoCFGForSelect");
+
+      R << "control flow cannot be substituted for a select";
+      if (auto *PredB = BB->getSinglePredecessor())
+        R << ore::setExtraArgs() << ore::NV("Cmp", PredB->getTerminator());
+
+      ORE->emit(R);
       return false;
     }
   }
@@ -5121,7 +5061,9 @@ bool LoopVectorizationLegality::canVectorize() {
   // We must have a single backedge.
   if (TheLoop->getNumBackEdges() != 1) {
     ORE->emit(createMissedAnalysis("CFGNotUnderstood")
-              << "loop control flow is not understood by vectorizer");
+              << "loop control flow is not understood by vectorizer"
+              << ore::setExtraArgs()
+              << " (Reason = multiple backedges)");
     if (ORE->allowExtraAnalysis())
       Result = false;
     else
@@ -5131,7 +5073,9 @@ bool LoopVectorizationLegality::canVectorize() {
   // We must have a single exiting block.
   if (!TheLoop->getExitingBlock()) {
     ORE->emit(createMissedAnalysis("CFGNotUnderstood")
-              << "loop control flow is not understood by vectorizer");
+              << "loop control flow is not understood by vectorizer"
+              << ore::setExtraArgs()
+              << " (Reason = early exits)");
     if (ORE->allowExtraAnalysis())
       Result = false;
     else
@@ -5158,6 +5102,18 @@ bool LoopVectorizationLegality::canVectorize() {
   unsigned NumBlocks = TheLoop->getNumBlocks();
   if (NumBlocks != 1 && !canVectorizeWithIfConvert()) {
     DEBUG(dbgs() << "LV: Can't if-convert the loop.\n");
+    if (ORE->allowExtraAnalysis())
+      Result = false;
+    else
+      return false;
+  }
+
+  // ScalarEvolution needs to be able to find the exit count.
+  const SCEV *ExitCount = PSE.getBackedgeTakenCount();
+  if (ExitCount == PSE.getSE()->getCouldNotCompute()) {
+    ORE->emit(createMissedAnalysis("CantComputeNumberOfIterations")
+              << "could not determine number of loop iterations");
+    DEBUG(dbgs() << "LV: SCEV could not compute the loop exit count.\n");
     if (ORE->allowExtraAnalysis())
       Result = false;
     else
@@ -5349,7 +5305,8 @@ bool LoopVectorizationLegality::canVectorizeInstrs() {
         }
 
         RecurrenceDescriptor RedDes;
-        if (RecurrenceDescriptor::isReductionPHI(Phi, TheLoop, RedDes)) {
+        if (RecurrenceDescriptor::isReductionPHI(Phi, TheLoop, PSE.getSE(),
+                                                 RedDes)) {
           if (RedDes.hasUnsafeAlgebra())
             Requirements->addUnsafeAlgebraInst(RedDes.getUnsafeAlgebraInst());
           AllowedExit.insert(RedDes.getLoopExitInstr());
@@ -5394,9 +5351,22 @@ bool LoopVectorizationLegality::canVectorizeInstrs() {
           !isa<DbgInfoIntrinsic>(CI) &&
           !(CI->getCalledFunction() && TLI &&
             TLI->isFunctionVectorizable(CI->getCalledFunction()->getName()))) {
-        ORE->emit(createMissedAnalysis("CantVectorizeCall", CI)
-                  << "call instruction cannot be vectorized");
+        if (CI->isInlineAsm())
+          ORE->emit(createMissedAnalysis("CantVectorizeCall")
+                    << "inline assembly call cannot be vectorized"
+                    << ore::setExtraArgs()
+                    << " (Location = " << ore::NV("Location", CI) << ")");
+        else {
+          auto *Callee = CI->getCalledFunction();
+          std::string CalleeName = Callee ? Callee->getName() : "[?]";
+          ORE->emit(createMissedAnalysis("CantVectorizeCall")
+                    << "call instruction cannot be vectorized"
+                    << ore::setExtraArgs()
+                    << " (Callee = " << CalleeName
+                    << ", Location = " << ore::NV("Location", CI) << ")");
+        }
         DEBUG(dbgs() << "LV: Found a non-intrinsic, non-libfunc callsite.\n");
+
         return false;
       }
 
@@ -7537,7 +7507,7 @@ unsigned LoopVectorizationCostModel::getInstructionCost(Instruction *I,
   case Instruction::Call: {
     bool NeedToScalarize;
     CallInst *CI = cast<CallInst>(I);
-    unsigned CallCost = getVectorCallCost(CI, VF, TTI, TLI, NeedToScalarize);
+    unsigned CallCost = getVectorCallCost(CI, VF, NeedToScalarize);
     if (getVectorIntrinsicIDForCall(CI, TLI))
       return std::min(CallCost, getVectorIntrinsicCost(CI, VF, TTI, TLI));
     return CallCost;
@@ -7942,22 +7912,30 @@ bool LoopVectorizePass::processLoop(Loop *L) {
   if (!VectorizeLoop && !InterleaveLoop) {
     // Do not vectorize or interleaving the loop.
     ORE->emit(OptimizationRemarkMissed(VAPassName, VecDiagMsg.first,
-                                         L->getStartLoc(), L->getHeader())
+                                       {L->getLocRange().getStart(),
+                                        L->getLocRange().getEnd()},
+                                       L->getHeader())
               << VecDiagMsg.second);
     ORE->emit(OptimizationRemarkMissed(LV_NAME, IntDiagMsg.first,
-                                         L->getStartLoc(), L->getHeader())
+                                       {L->getLocRange().getStart(),
+                                        L->getLocRange().getEnd()},
+                                       L->getHeader())
               << IntDiagMsg.second);
     return false;
   } else if (!VectorizeLoop && InterleaveLoop) {
     DEBUG(dbgs() << "LV: Interleave Count is " << IC << '\n');
     ORE->emit(OptimizationRemarkAnalysis(VAPassName, VecDiagMsg.first,
-                                         L->getStartLoc(), L->getHeader())
+                                        {L->getLocRange().getStart(),
+                                         L->getLocRange().getEnd()},
+                                        L->getHeader())
               << VecDiagMsg.second);
   } else if (VectorizeLoop && !InterleaveLoop) {
     DEBUG(dbgs() << "LV: Found a vectorizable loop (" << VF.Width << ") in "
                  << DebugLocStr << '\n');
     ORE->emit(OptimizationRemarkAnalysis(LV_NAME, IntDiagMsg.first,
-                                         L->getStartLoc(), L->getHeader())
+                                         {L->getLocRange().getStart(),
+                                          L->getLocRange().getEnd()},
+                                         L->getHeader())
               << IntDiagMsg.second);
   } else if (VectorizeLoop && InterleaveLoop) {
     DEBUG(dbgs() << "LV: Found a vectorizable loop (" << VF.Width << ") in "
@@ -7992,11 +7970,22 @@ bool LoopVectorizePass::processLoop(Loop *L) {
       AddRuntimeUnrollDisableMetaData(L);
 
     // Report the vectorization decision.
-    ORE->emit(OptimizationRemark(LV_NAME, "Vectorized", L->getStartLoc(),
-                                 L->getHeader())
-              << "vectorized loop (vectorization width: "
-              << NV("VectorizationFactor", VF.Width)
-              << ", interleaved count: " << NV("InterleaveCount", IC) << ")");
+    OptimizationRemark R(LV_NAME, "Vectorized",
+                         {L->getLocRange().getStart(),
+                          L->getLocRange().getEnd()},
+                         L->getHeader());
+    R << "vectorized loop (vectorization width: "
+      << NV("VectorizationFactor", VF.Width)
+      << ", interleaved count: " << NV("InterleaveCount", IC) << ")"
+      << setExtraArgs()
+      << "(runtime checks: "
+      << NV("RTNeeded",
+          std::string(LVL.getRuntimePointerChecking()->Need ? "" : "no"))
+      << ", FixedWidthVectorization: "
+      << NV("FixedWidthVectorization", std::string("fixed"))
+      << ")";
+    ORE->emit(R);
+
   }
 
   // Mark the loop as already vectorized to avoid vectorizing again.

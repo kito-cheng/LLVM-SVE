@@ -1,6 +1,9 @@
 ; RUN: not llvm-mc -triple arm64-apple-darwin -mattr=neon -show-encoding -output-asm-variant=1 < %s 2>%t | FileCheck %s
 ; RUN: FileCheck %s < %t --check-prefix=NO-FP16
 ; RUN: llvm-mc -triple arm64-apple-darwin -mattr=neon,v8.2a,fullfp16 -show-encoding -output-asm-variant=1 < %s | FileCheck %s --check-prefix=CHECK --check-prefix=FP16
+; RUN: not llvm-mc -triple arm64-apple-darwin -mattr=neon,+sve -show-encoding -output-asm-variant=1 < %s 2>%t | FileCheck %s
+; RUN: FileCheck %s < %t --check-prefix=NO-FP16
+; RUN: llvm-mc -triple arm64-apple-darwin -mattr=neon,v8.2a,fullfp16,+sve -show-encoding -output-asm-variant=1 < %s | FileCheck %s --check-prefix=CHECK --check-prefix=FP16
 
 foo:
 ;-----------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 ; RUN: llc -emulated-tls -mtriple=aarch64-linux-android \
 ; RUN:     -relocation-model=pic -disable-fp-elim < %s | FileCheck -check-prefix=ARM64 %s
 
+; NOTE: disabled arm-linux-android as that does not belong in the AArch64 directory
 ; Copied from X86/emutls.ll
 
 ; Use my_emutls_get_address like __emutls_get_address.

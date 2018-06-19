@@ -340,7 +340,32 @@ public:
 
   unsigned getCacheLineSize() { return 0; }
 
+  llvm::Optional<unsigned> getCacheSize(TargetTransformInfo::CacheLevel Level) {
+    switch (Level) {
+    case TargetTransformInfo::CacheLevel::L1D:
+      LLVM_FALLTHROUGH;
+    case TargetTransformInfo::CacheLevel::L2D:
+      return llvm::Optional<unsigned>();
+    }
+
+    llvm_unreachable("Unknown TargetTransformInfo::CacheLevel");
+  }
+
+  llvm::Optional<unsigned> getCacheAssociativity(
+    TargetTransformInfo::CacheLevel Level) {
+    switch (Level) {
+    case TargetTransformInfo::CacheLevel::L1D:
+      LLVM_FALLTHROUGH;
+    case TargetTransformInfo::CacheLevel::L2D:
+      return llvm::Optional<unsigned>();
+    }
+
+    llvm_unreachable("Unknown TargetTransformInfo::CacheLevel");
+  }
+
   unsigned getPrefetchDistance() { return 0; }
+
+  unsigned getRegisterBitWidthUpperBound(bool Vector) { return 32; }
 
   unsigned getMinPrefetchStride() { return 1; }
 
@@ -383,6 +408,12 @@ public:
 
   unsigned getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
                            unsigned AddressSpace, const Instruction *I) {
+    return 1;
+  }
+
+  unsigned getVectorMemoryOpCost(unsigned Opcode, Type *Src, Value *Ptr,
+                                 unsigned Alignment, unsigned AddressSpace,
+                                 const MemAccessInfo &Info, Instruction *I) {
     return 1;
   }
 
@@ -470,6 +501,14 @@ public:
             Callee->getFnAttribute("target-features"));
   }
 
+  bool canVectorizeNonUnitStrides(bool forceFixedWidth = false) {
+    return false;
+  }
+
+  bool vectorizePreventedSLForwarding(void) const {
+    return false;
+  }
+
   unsigned getLoadStoreVecRegBitWidth(unsigned AddrSpace) const { return 128; }
 
   bool isLegalToVectorizeLoad(LoadInst *LI) const { return true; }
@@ -502,11 +541,17 @@ public:
 
   bool useReductionIntrinsic(unsigned Opcode, Type *Ty,
                              TTI::ReductionFlags Flags) const {
+    if (auto *VT = dyn_cast<VectorType>(Ty))
+      return VT->isScalable();
     return false;
   }
 
   bool shouldExpandReduction(const IntrinsicInst *II) const {
     return true;
+  }
+  bool canReduceInVector(unsigned Opcode, Type *ScalarTy,
+                         TTI::ReductionFlags Flags) const {
+    return !Flags.IsOrdered;
   }
 
 protected:
@@ -745,6 +790,31 @@ public:
     return static_cast<T *>(this)->getOperationCost(
         Operator::getOpcode(U), U->getType(),
         U->getNumOperands() == 1 ? U->getOperand(0)->getType() : nullptr);
+  }
+
+  bool hasVectorMemoryOp(unsigned Opcode, Type *Ty, const MemAccessInfo &Info) {
+    bool IsConsecutive = Info.getAccessType() == MemAccessInfo::STRIDED &&
+                         std::abs(Info.getStride()) == 1;
+    if (Info.isUniform())
+      return true;
+    if (Info.isMasked() && Opcode == Instruction::Load)
+      return static_cast<T *>(this)
+          ->isLegalMaskedLoad(Ty->getVectorElementType()/*, IsConsecutive*/);
+    if (Info.isMasked() && Opcode == Instruction::Store)
+      return static_cast<T *>(this)
+          ->isLegalMaskedStore(Ty->getVectorElementType()/*, IsConsecutive*/);
+    return IsConsecutive;
+  }
+
+  unsigned getVectorMemoryOpCost(unsigned Opcode, Type *Src, Value *Ptr,
+                                 unsigned Alignment, unsigned AddressSpace,
+                                 const MemAccessInfo &Info, Instruction *I) {
+    if (Info.isMasked())
+      return static_cast<T *>(this)
+          ->getMaskedMemoryOpCost(Opcode, Src, Alignment, AddressSpace);
+    else
+      return static_cast<T *>(this)
+          ->getMemoryOpCost(Opcode, Src, Alignment, AddressSpace, I);
   }
 };
 }

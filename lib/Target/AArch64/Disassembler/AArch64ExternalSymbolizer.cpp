@@ -41,6 +41,13 @@ getVariant(uint64_t LLVMDisassembler_VariantKind) {
   }
 }
 
+const char* default_symbol_callback(void *disInfo, uint64_t referenceValue,
+                                uint64_t *referenceType, uint64_t referencePC,
+                                const char **referenceName) {
+  *referenceType = LLVMDisassembler_ReferenceType_InOut_None;
+  return NULL;
+}
+
 /// tryAddingSymbolicOperand - tryAddingSymbolicOperand trys to add a symbolic
 /// operand in place of the immediate Value in the MCInst.  The immediate
 /// Value has not had any PC adjustment made by the caller. If the instruction
@@ -72,6 +79,11 @@ bool AArch64ExternalSymbolizer::tryAddingSymbolicOperand(
   const char *ReferenceName;
   if (!GetOpInfo ||
       !GetOpInfo(DisInfo, Address, 0 /* Offset */, InstSize, 1, &SymbolicOp)) {
+    // The symbol lookup callback isn't always provided, but
+    // bailing out here means that we get poor disassembly by default.
+    // Instead, we use a default callback if none is provided.
+    if (!SymbolLookUp)
+      SymbolLookUp = default_symbol_callback;
     if (IsBranch) {
       ReferenceType = LLVMDisassembler_ReferenceType_In_Branch;
       const char *Name = SymbolLookUp(DisInfo, Address + Value, &ReferenceType,
@@ -101,6 +113,7 @@ bool AArch64ExternalSymbolizer::tryAddingSymbolicOperand(
                      &ReferenceName);
         CommentStream << format("0x%llx",
                                 0xfffffffffffff000LL & (Address + Value));
+        return false;
     } else if (MI.getOpcode() == AArch64::ADDXri ||
                MI.getOpcode() == AArch64::LDRXui ||
                MI.getOpcode() == AArch64::LDRXl ||

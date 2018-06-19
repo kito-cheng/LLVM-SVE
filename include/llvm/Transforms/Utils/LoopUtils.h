@@ -98,11 +98,14 @@ public:
 
   RecurrenceDescriptor() = default;
 
-  RecurrenceDescriptor(Value *Start, Instruction *Exit, RecurrenceKind K,
+  RecurrenceDescriptor(Value *Start, Instruction* Exit,
+                       StoreInst* Store, RecurrenceKind K,
                        MinMaxRecurrenceKind MK, Instruction *UAI, Type *RT,
-                       bool Signed, SmallPtrSetImpl<Instruction *> &CI)
-      : StartValue(Start), LoopExitInstr(Exit), Kind(K), MinMaxKind(MK),
-        UnsafeAlgebraInst(UAI), RecurrenceType(RT), IsSigned(Signed) {
+                       bool Signed, SmallPtrSetImpl<Instruction *> &CI,
+                       bool IsOrdered)
+    : IntermediateStore(Store), StartValue(Start), LoopExitInstr(Exit), Kind(K),
+      MinMaxKind(MK), UnsafeAlgebraInst(UAI), RecurrenceType(RT),
+      IsSigned(Signed), IsOrdered(IsOrdered) {
     CastInsts.insert(CI.begin(), CI.end());
   }
 
@@ -174,11 +177,13 @@ public:
   /// RecurrenceDescriptor.
   static bool AddReductionVar(PHINode *Phi, RecurrenceKind Kind, Loop *TheLoop,
                               bool HasFunNoNaNAttr,
+                              ScalarEvolution *SE,
                               RecurrenceDescriptor &RedDes);
 
   /// Returns true if Phi is a reduction in TheLoop. The RecurrenceDescriptor is
   /// returned in RedDes.
   static bool isReductionPHI(PHINode *Phi, Loop *TheLoop,
+                             ScalarEvolution *SE,
                              RecurrenceDescriptor &RedDes);
 
   /// Returns true if Phi is a first-order recurrence. A first-order recurrence
@@ -237,7 +242,7 @@ public:
 
   /// Returns the type of the recurrence. This type can be narrower than the
   /// actual type of the Phi if the recurrence has been type-promoted.
-  Type *getRecurrenceType() { return RecurrenceType; }
+  Type *getRecurrenceType() const { return RecurrenceType; }
 
   /// Returns a reference to the instructions used for type-promoting the
   /// recurrence.
@@ -245,6 +250,12 @@ public:
 
   /// Returns true if all source operands of the recurrence are SExtInsts.
   bool isSigned() { return IsSigned; }
+
+  /// The list of intermediate stores of reductions
+  StoreInst * IntermediateStore = nullptr;
+
+  /// Expose an ordered FP reduction to the instance users.
+  bool isOrdered() const { return IsOrdered; }
 
 private:
   // The starting value of the recurrence.
@@ -264,6 +275,8 @@ private:
   bool IsSigned = false;
   // Instructions used for type-promoting the recurrence.
   SmallPtrSet<Instruction *, 8> CastInsts;
+  // If this is an ordered reduction
+  bool IsOrdered = false;
 };
 
 /// A struct for saving information about induction variables.
@@ -528,6 +541,12 @@ createSimpleTargetReduction(IRBuilder<> &B, const TargetTransformInfo *TTI,
 Value *createTargetReduction(IRBuilder<> &B, const TargetTransformInfo *TTI,
                              RecurrenceDescriptor &Desc, Value *Src,
                              bool NoNaN = false);
+
+
+/// Create an ordered reduction intrinsic using the given recurrence
+/// descriptor\p Desc.
+Value *createOrderedReduction(IRBuilder<> &Builder, RecurrenceDescriptor &Desc,
+                              Value *Src, Value *Start, Value *Predicate);
 
 /// Get the intersection (logical and) of all of the potential IR flags
 /// of each scalar operation (VL) that will be converted into a vector (I).

@@ -28,3 +28,11 @@ define <8 x i32> @partial_load() {
   %load = load <8 x i32>, <8 x i32>* bitcast (i32* getelementptr ([8 x i32], [8 x i32]* @GV, i64 0, i64 -1) to <8 x i32>*)
   ret <8 x i32> %load
 }
+
+; Ensure we do not constant fold the load because its size is unknown.
+define <n x 8 x i32> @cannot_partial_load() {
+; CHECK-LABEL: @cannot_partial_load(
+; CHECK: %load = load <n x 8 x i32>, <n x 8 x i32>* bitcast (i32* getelementptr ([8 x i32], [8 x i32]* @GV, i64 0, i64 -1) to <n x 8 x i32>*)
+  %load = load <n x 8 x i32>, <n x 8 x i32>* bitcast (i32* getelementptr ([8 x i32], [8 x i32]* @GV, i64 0, i64 -1) to <n x 8 x i32>*)
+  ret <n x 8 x i32> %load
+}

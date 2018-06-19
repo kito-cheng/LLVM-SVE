@@ -423,6 +423,14 @@ bool BasicAAResult::DecomposeGEPExpression(const Value *V,
       return false;
     }
 
+    // Don't attempt to analyze GEPs with gather/scatter semantics
+    // TODO: For fixed-width with constant offsets, or for a constant-like
+    // seriesvector, we may be able to do better than this.
+    if (GEPOp->getType()->isVectorTy()) {
+      Decomposed.Base = V;
+      return false;
+    }
+
     unsigned AS = GEPOp->getPointerAddressSpace();
     // Walk the indices of the GEP, accumulating them into BaseOff/VarIndices.
     gep_type_iterator GTI = gep_type_begin(GEPOp);
@@ -766,9 +774,10 @@ ModRefInfo BasicAAResult::getModRefInfo(ImmutableCallSite CS,
       // Only look at the no-capture or byval pointer arguments.  If this
       // pointer were passed to arguments that were neither of these, then it
       // couldn't be no-capture.
-      if (!(*CI)->getType()->isPointerTy() ||
+      if (!(*CI)->getType()->isPtrOrPtrVectorTy() ||
           (!CS.doesNotCapture(OperandNo) &&
-           OperandNo < CS.getNumArgOperands() && !CS.isByValArgument(OperandNo)))
+           OperandNo < CS.getNumArgOperands() &&
+           !CS.isByValArgument(OperandNo)))
         continue;
 
       // Call doesn't access memory through this operand, so we don't care
@@ -1150,9 +1159,14 @@ AliasResult BasicAAResult::aliasGEP(const GEPOperator *GEP1, uint64_t V1Size,
   int64_t GEP1BaseOffset = DecompGEP1.StructOffset + DecompGEP1.OtherOffset;
   int64_t GEP2BaseOffset = DecompGEP2.StructOffset + DecompGEP2.OtherOffset;
 
-  assert(DecompGEP1.Base == UnderlyingV1 && DecompGEP2.Base == UnderlyingV2 &&
-         "DecomposeGEPExpression returned a result different from "
-         "GetUnderlyingObject");
+  // DecomposeGEPExpression and GetUnderlyingObject should return the
+  // same result except when DecomposeGEPExpression has no DataLayout.
+  // FIXME: They always have a DataLayout, so this should become an
+  // assert.
+  // Another possibility is that a vector GEP prevents decomposition.
+  if (DecompGEP1.Base != UnderlyingV1 || DecompGEP2.Base != UnderlyingV2) {
+    return MayAlias;
+  }
 
   // If the GEP's offset relative to its base is such that the base would
   // fall below the start of the object underlying V2, then the GEP and V2
@@ -1534,7 +1548,8 @@ AliasResult BasicAAResult::aliasCheck(const Value *V1, uint64_t V1Size,
   if (isValueEqualInPotentialCycles(V1, V2))
     return MustAlias;
 
-  if (!V1->getType()->isPointerTy() || !V2->getType()->isPointerTy())
+  if (!V1->getType()->isPtrOrPtrVectorTy() ||
+      !V2->getType()->isPtrOrPtrVectorTy())
     return NoAlias; // Scalars cannot alias each other
 
   // Figure out what objects these things are pointing to if we can.

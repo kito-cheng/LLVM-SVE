@@ -21,6 +21,7 @@ add_llvm_library(LLVMScalarOpts
   JumpThreading.cpp
   LICM.cpp
   LoopAccessAnalysisPrinter.cpp
+  LoopExprTreeFactoring.cpp
   LoopSink.cpp
   LoopDeletion.cpp
   LoopDataPrefetch.cpp
@@ -32,8 +33,10 @@ add_llvm_library(LLVMScalarOpts
   LoopPassManager.cpp
   LoopPredication.cpp
   LoopRerollPass.cpp
+  LoopRewriteGEPs.cpp
   LoopRotation.cpp
   LoopSimplifyCFG.cpp
+  LoopSpeculativeBoundsCheck.cpp
   LoopStrengthReduce.cpp
   LoopUnrollPass.cpp
   LoopUnswitch.cpp
@@ -55,6 +58,7 @@ add_llvm_library(LLVMScalarOpts
   Scalar.cpp
   Scalarizer.cpp
   SeparateConstOffsetFromGEP.cpp
+  SeparateInvariantsFromGepOffset.cpp
   SimpleLoopUnswitch.cpp
   SimplifyCFGPass.cpp
   Sink.cpp

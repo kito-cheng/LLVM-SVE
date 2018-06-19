@@ -174,7 +174,7 @@ Value *SimplifyCastInst(unsigned CastOpc, Value *Op, Type *Ty,
                         const SimplifyQuery &Q);
 
 /// Given operands for a ShuffleVectorInst, fold the result or return null.
-Value *SimplifyShuffleVectorInst(Value *Op0, Value *Op1, Constant *Mask,
+Value *SimplifyShuffleVectorInst(Value *Op0, Value *Op1, Value *Mask,
                                  Type *RetTy, const SimplifyQuery &Q);
 
 //=== Helper functions for higher up the class hierarchy.

@@ -1,4 +1,5 @@
 //RUN: llvm-mc  -triple=aarch64-linux-gnu -print-imm-hex %s | FileCheck %s
+//RUN: llvm-mc  -triple=aarch64-linux-gnu -print-imm-hex -mattr=+sve %s | FileCheck %s
 
 //
 // Check that large constants are converted to ldr from constant pool

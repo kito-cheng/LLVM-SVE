@@ -121,6 +121,7 @@ namespace {
       (void) llvm::createLoopPredicationPass();
       (void) llvm::createLoopSimplifyPass();
       (void) llvm::createLoopSimplifyCFGPass();
+      (void) llvm::createLoopSpeculativeBoundsCheckPass();
       (void) llvm::createLoopStrengthReducePass();
       (void) llvm::createLoopRerollPass();
       (void) llvm::createLoopUnrollPass();
@@ -193,6 +194,7 @@ namespace {
       (void) llvm::createMemDepPrinter();
       (void) llvm::createInstructionSimplifierPass();
       (void) llvm::createLoopVectorizePass();
+      (void) llvm::createSVELoopVectorizePass();
       (void) llvm::createSLPVectorizerPass();
       (void) llvm::createLoadStoreVectorizerPass();
       (void) llvm::createPartiallyInlineLibCallsPass();
@@ -206,6 +208,7 @@ namespace {
       (void) llvm::createFloat2IntPass();
       (void) llvm::createEliminateAvailableExternallyPass();
       (void) llvm::createScalarizeMaskedMemIntrinPass();
+      (void) llvm::createPreInlinerTransformsPass();
 
       (void)new llvm::IntervalPartition();
       (void)new llvm::ScalarEvolutionWrapperPass();

@@ -144,6 +144,9 @@ static bool MaintainNoSignedWrap(BinaryOperator &I, Value *B, Value *C) {
     return false;
 
   const APInt *BVal, *CVal;
+  if (isa<ConstantInt>(C) && match(C, m_Zero()))
+    return true;
+
   if (!match(B, m_APInt(BVal)) || !match(C, m_APInt(CVal)))
     return false;
 
@@ -152,6 +155,48 @@ static bool MaintainNoSignedWrap(BinaryOperator &I, Value *B, Value *C) {
     (void)BVal->sadd_ov(*CVal, Overflow);
   else
     (void)BVal->ssub_ov(*CVal, Overflow);
+
+  return !Overflow;
+}
+
+// Return true, if No Unsigned Wrap should be maintained for I.
+// The No Unsigned Wrap flag can be kept if the operation "B (I.getOpcode) C",
+// where both B and C should be ConstantInts, results in a constant that does
+// not overflow. This function only handles the Add and Sub opcodes. For
+// all other opcodes, the function conservatively returns false.
+static bool MaintainNoUnsignedWrap(BinaryOperator &I, Value *B, Value *C) {
+  OverflowingBinaryOperator *OBO = dyn_cast<OverflowingBinaryOperator>(&I);
+  if (!OBO || !OBO->hasNoUnsignedWrap()) {
+    return false;
+  }
+
+  // We reason about Add and Sub Only.
+  Instruction::BinaryOps Opcode = I.getOpcode();
+  if (Opcode != Instruction::Add &&
+      Opcode != Instruction::Sub) {
+    return false;
+  }
+
+  ConstantInt *CB = dyn_cast<ConstantInt>(B);
+  ConstantInt *CC = dyn_cast<ConstantInt>(C);
+
+  if (CC && CC->isNullValue()) {
+    return true;
+  }
+
+  if (!CB || !CC) {
+    return false;
+  }
+
+  const APInt &BVal = CB->getValue();
+  const APInt &CVal = CC->getValue();
+  bool Overflow = false;
+
+  if (Opcode == Instruction::Add) {
+    BVal.uadd_ov(CVal, Overflow);
+  } else {
+    BVal.usub_ov(CVal, Overflow);
+  }
 
   return !Overflow;
 }
@@ -260,14 +305,20 @@ bool InstCombiner::SimplifyAssociativeOrCommutative(BinaryOperator &I) {
           // It simplifies to V.  Form "A op V".
           I.setOperand(0, A);
           I.setOperand(1, V);
+
+          bool NSW = MaintainNoSignedWrap(I, B, C) &&
+            (!Op0 || (isa<BinaryOperator>(Op0) && Op0->hasNoSignedWrap()));
+          bool NUW = MaintainNoUnsignedWrap(I, B, C) &&
+            (!Op0 || (isa<BinaryOperator>(Op0) && Op0->hasNoUnsignedWrap()));
+
           // Conservatively clear the optional flags, since they may not be
           // preserved by the reassociation.
-          if (MaintainNoSignedWrap(I, B, C) &&
-              (!Op0 || (isa<BinaryOperator>(Op0) && Op0->hasNoSignedWrap()))) {
+          if (NSW || NUW) {
             // Note: this is only valid because SimplifyBinOp doesn't look at
             // the operands to Op0.
             I.clearSubclassOptionalData();
-            I.setHasNoSignedWrap(true);
+            I.setHasNoSignedWrap(NSW);
+            I.setHasNoUnsignedWrap(NUW);
           } else {
             ClearSubclassDataAfterReassociation(I);
           }
@@ -1390,19 +1441,38 @@ Value *InstCombiner::SimplifyVectorOp(BinaryOperator &Inst) {
   assert(cast<VectorType>(LHS->getType())->getNumElements() == VWidth);
   assert(cast<VectorType>(RHS->getType())->getNumElements() == VWidth);
 
+  Value *LShufData, *LShufMask, *RShufData, *RShufMask;
+  Value *LInsElem, *LInsIdx, *RInsElem, *RInsIdx;
+
   // If both arguments of the binary operation are shuffles that use the same
-  // mask and shuffle within a single vector, move the shuffle after the binop:
+  // mask and shuffle within a single vector, it is worthwhile to move the
+  // shuffle after the binary operation:
   //   Op(shuffle(v1, m), shuffle(v2, m)) -> shuffle(Op(v1, v2), m)
-  auto *LShuf = dyn_cast<ShuffleVectorInst>(LHS);
-  auto *RShuf = dyn_cast<ShuffleVectorInst>(RHS);
-  if (LShuf && RShuf && LShuf->getMask() == RShuf->getMask() &&
-      isa<UndefValue>(LShuf->getOperand(1)) &&
-      isa<UndefValue>(RShuf->getOperand(1)) &&
-      LShuf->getOperand(0)->getType() == RShuf->getOperand(0)->getType()) {
-    Value *NewBO = CreateBinOpAsGiven(Inst, LShuf->getOperand(0),
-                                      RShuf->getOperand(0), Builder);
-    return Builder.CreateShuffleVector(
-        NewBO, UndefValue::get(NewBO->getType()), LShuf->getMask());
+  if (match(LHS, m_ShuffleVector(m_Value(LShufData), m_Undef(),
+                                 m_Value(LShufMask))) &&
+      match(RHS, m_ShuffleVector(m_Value(RShufData), m_Undef(),
+                                 m_Value(RShufMask)))) {
+    if (LShufData->getType() == RShufData->getType() &&
+        LShufMask == RShufMask) {
+      Value *NewBO = CreateBinOpAsGiven(Inst, LShufData, RShufData, Builder);
+      Value *Undef = UndefValue::get(NewBO->getType());
+      return Builder.CreateShuffleVector(NewBO, Undef, LShufMask);
+    }
+  }
+
+  // If both arguments of a binary operation insert into undef using the same
+  // element index, it is worth moving the insert after the binary operation:
+  //   Op(insert(undef, e1, m), insert(undef, e2, m)) ->
+  //                                                insert(undef, Op(e1, e2), m)
+  if (match(LHS, m_InsertElement(m_Undef(), m_Value(LInsElem),
+                                 m_Value(LInsIdx))) &&
+      match(RHS, m_InsertElement(m_Undef(), m_Value(RInsElem),
+                                 m_Value(RInsIdx)))) {
+    if (LInsIdx == RInsIdx) {
+      Value *NewBO = CreateBinOpAsGiven(Inst, LInsElem, RInsElem, Builder);
+      Value *Undef = UndefValue::get(LHS->getType());
+      return Builder.CreateInsertElement(Undef, NewBO, LInsIdx);
+    }
   }
 
   // If one argument is a shuffle within one vector, the other is a constant,
@@ -1413,11 +1483,12 @@ Value *InstCombiner::SimplifyVectorOp(BinaryOperator &Inst) {
   if (isa<ShuffleVectorInst>(RHS)) Shuffle = cast<ShuffleVectorInst>(RHS);
   if (isa<Constant>(LHS)) C1 = cast<Constant>(LHS);
   if (isa<Constant>(RHS)) C1 = cast<Constant>(RHS);
+  SmallVector<int, 16> ShMask;
   if (Shuffle && C1 &&
       (isa<ConstantVector>(C1) || isa<ConstantDataVector>(C1)) &&
       isa<UndefValue>(Shuffle->getOperand(1)) &&
-      Shuffle->getType() == Shuffle->getOperand(0)->getType()) {
-    SmallVector<int, 16> ShMask = Shuffle->getShuffleMask();
+      Shuffle->getType() == Shuffle->getOperand(0)->getType() &&
+      Shuffle->getShuffleMask(ShMask)) {
     // Find constant C2 that has property:
     //   shuffle(C2, ShMask) = C1
     // If such constant does not exist (example: ShMask=<0,0> and C1=<1,2>)
@@ -1449,6 +1520,12 @@ Value *InstCombiner::SimplifyVectorOp(BinaryOperator &Inst) {
 }
 
 Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
+  // TODO: This is excessive but much of the following does not work for width
+  // agnostic vectors.
+  if (GEP.getType()->isVectorTy() &&
+      cast<VectorType>(GEP.getType())->isScalable())
+    return nullptr;
+
   SmallVector<Value*, 8> Ops(GEP.op_begin(), GEP.op_end());
 
   if (Value *V = SimplifyGEPInst(GEP.getSourceElementType(), Ops,
@@ -2270,12 +2347,13 @@ Instruction *InstCombiner::visitBranchInst(BranchInst &BI) {
   if (match(&BI, m_Br(m_OneUse(m_Cmp(Pred, m_Value(), m_Value())), TrueDest,
                       FalseDest)) &&
       !isCanonicalPredicate(Pred)) {
-    // Swap destinations and condition.
-    CmpInst *Cond = cast<CmpInst>(BI.getCondition());
-    Cond->setPredicate(CmpInst::getInversePredicate(Pred));
-    BI.swapSuccessors();
-    Worklist.Add(Cond);
-    return &BI;
+    if (auto *Cond = dyn_cast<CmpInst>(BI.getCondition())) {
+      // Swap destinations and condition.
+      Cond->setPredicate(CmpInst::getInversePredicate(Pred));
+      BI.swapSuccessors();
+      Worklist.Add(Cond);
+      return &BI;
+    }
   }
 
   return nullptr;

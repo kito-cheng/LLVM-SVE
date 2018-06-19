@@ -993,28 +993,28 @@ define <2 x half> @test_bitcast_2xi16_to_2xhalf(<2 x i16> %a) #0 {
 }
 
 
-declare <2 x half> @llvm.sqrt.f16(<2 x half> %a) #0
-declare <2 x half> @llvm.powi.f16(<2 x half> %a, <2 x i32> %b) #0
-declare <2 x half> @llvm.sin.f16(<2 x half> %a) #0
-declare <2 x half> @llvm.cos.f16(<2 x half> %a) #0
-declare <2 x half> @llvm.pow.f16(<2 x half> %a, <2 x half> %b) #0
-declare <2 x half> @llvm.exp.f16(<2 x half> %a) #0
-declare <2 x half> @llvm.exp2.f16(<2 x half> %a) #0
-declare <2 x half> @llvm.log.f16(<2 x half> %a) #0
-declare <2 x half> @llvm.log10.f16(<2 x half> %a) #0
-declare <2 x half> @llvm.log2.f16(<2 x half> %a) #0
-declare <2 x half> @llvm.fma.f16(<2 x half> %a, <2 x half> %b, <2 x half> %c) #0
-declare <2 x half> @llvm.fabs.f16(<2 x half> %a) #0
-declare <2 x half> @llvm.minnum.f16(<2 x half> %a, <2 x half> %b) #0
-declare <2 x half> @llvm.maxnum.f16(<2 x half> %a, <2 x half> %b) #0
-declare <2 x half> @llvm.copysign.f16(<2 x half> %a, <2 x half> %b) #0
-declare <2 x half> @llvm.floor.f16(<2 x half> %a) #0
-declare <2 x half> @llvm.ceil.f16(<2 x half> %a) #0
-declare <2 x half> @llvm.trunc.f16(<2 x half> %a) #0
-declare <2 x half> @llvm.rint.f16(<2 x half> %a) #0
-declare <2 x half> @llvm.nearbyint.f16(<2 x half> %a) #0
-declare <2 x half> @llvm.round.f16(<2 x half> %a) #0
-declare <2 x half> @llvm.fmuladd.f16(<2 x half> %a, <2 x half> %b, <2 x half> %c) #0
+declare <2 x half> @llvm.sqrt.v2f16(<2 x half> %a) #0
+declare <2 x half> @llvm.powi.v2f16(<2 x half> %a, <2 x i32> %b) #0
+declare <2 x half> @llvm.sin.v2f16(<2 x half> %a) #0
+declare <2 x half> @llvm.cos.v2f16(<2 x half> %a) #0
+declare <2 x half> @llvm.pow.v2f16(<2 x half> %a, <2 x half> %b) #0
+declare <2 x half> @llvm.exp.v2f16(<2 x half> %a) #0
+declare <2 x half> @llvm.exp2.v2f16(<2 x half> %a) #0
+declare <2 x half> @llvm.log.v2f16(<2 x half> %a) #0
+declare <2 x half> @llvm.log10.v2f16(<2 x half> %a) #0
+declare <2 x half> @llvm.log2.v2f16(<2 x half> %a) #0
+declare <2 x half> @llvm.fma.v2f16(<2 x half> %a, <2 x half> %b, <2 x half> %c) #0
+declare <2 x half> @llvm.fabs.v2f16(<2 x half> %a) #0
+declare <2 x half> @llvm.minnum.v2f16(<2 x half> %a, <2 x half> %b) #0
+declare <2 x half> @llvm.maxnum.v2f16(<2 x half> %a, <2 x half> %b) #0
+declare <2 x half> @llvm.copysign.v2f16(<2 x half> %a, <2 x half> %b) #0
+declare <2 x half> @llvm.floor.v2f16(<2 x half> %a) #0
+declare <2 x half> @llvm.ceil.v2f16(<2 x half> %a) #0
+declare <2 x half> @llvm.trunc.v2f16(<2 x half> %a) #0
+declare <2 x half> @llvm.rint.v2f16(<2 x half> %a) #0
+declare <2 x half> @llvm.nearbyint.v2f16(<2 x half> %a) #0
+declare <2 x half> @llvm.round.v2f16(<2 x half> %a) #0
+declare <2 x half> @llvm.fmuladd.v2f16(<2 x half> %a, <2 x half> %b, <2 x half> %c) #0
 
 ; CHECK-LABEL: test_sqrt(
 ; CHECK:      ld.param.b32    [[A:%hh[0-9]+]], [test_sqrt_param_0];
@@ -1029,14 +1029,14 @@ declare <2 x half> @llvm.fmuladd.f16(<2 x half> %a, <2 x half> %b, <2 x half> %c
 ; CHECK:      st.param.b32    [func_retval0+0], [[R]];
 ; CHECK:      ret;
 define <2 x half> @test_sqrt(<2 x half> %a) #0 {
-  %r = call <2 x half> @llvm.sqrt.f16(<2 x half> %a)
+  %r = call <2 x half> @llvm.sqrt.v2f16(<2 x half> %a)
   ret <2 x half> %r
 }
 
 ;;; Can't do this yet: requires libcall.
 ; XCHECK-LABEL: test_powi(
 ;define <2 x half> @test_powi(<2 x half> %a, <2 x i32> %b) #0 {
-;  %r = call <2 x half> @llvm.powi.f16(<2 x half> %a, <2 x i32> %b)
+;  %r = call <2 x half> @llvm.powi.v2f16(<2 x half> %a, <2 x i32> %b)
 ;  ret <2 x half> %r
 ;}
 
@@ -1053,7 +1053,7 @@ define <2 x half> @test_sqrt(<2 x half> %a) #0 {
 ; CHECK:      st.param.b32    [func_retval0+0], [[R]];
 ; CHECK:      ret;
 define <2 x half> @test_sin(<2 x half> %a) #0 #1 {
-  %r = call <2 x half> @llvm.sin.f16(<2 x half> %a)
+  %r = call <2 x half> @llvm.sin.v2f16(<2 x half> %a)
   ret <2 x half> %r
 }
 
@@ -1070,49 +1070,49 @@ define <2 x half> @test_sin(<2 x half> %a) #0 #1 {
 ; CHECK:      st.param.b32    [func_retval0+0], [[R]];
 ; CHECK:      ret;
 define <2 x half> @test_cos(<2 x half> %a) #0 #1 {
-  %r = call <2 x half> @llvm.cos.f16(<2 x half> %a)
+  %r = call <2 x half> @llvm.cos.v2f16(<2 x half> %a)
   ret <2 x half> %r
 }
 
 ;;; Can't do this yet: requires libcall.
 ; XCHECK-LABEL: test_pow(
 ;define <2 x half> @test_pow(<2 x half> %a, <2 x half> %b) #0 {
-;  %r = call <2 x half> @llvm.pow.f16(<2 x half> %a, <2 x half> %b)
+;  %r = call <2 x half> @llvm.pow.v2f16(<2 x half> %a, <2 x half> %b)
 ;  ret <2 x half> %r
 ;}
 
 ;;; Can't do this yet: requires libcall.
 ; XCHECK-LABEL: test_exp(
 ;define <2 x half> @test_exp(<2 x half> %a) #0 {
-;  %r = call <2 x half> @llvm.exp.f16(<2 x half> %a)
+;  %r = call <2 x half> @llvm.exp.v2f16(<2 x half> %a)
 ;  ret <2 x half> %r
 ;}
 
 ;;; Can't do this yet: requires libcall.
 ; XCHECK-LABEL: test_exp2(
 ;define <2 x half> @test_exp2(<2 x half> %a) #0 {
-;  %r = call <2 x half> @llvm.exp2.f16(<2 x half> %a)
+;  %r = call <2 x half> @llvm.exp2.v2f16(<2 x half> %a)
 ;  ret <2 x half> %r
 ;}
 
 ;;; Can't do this yet: requires libcall.
 ; XCHECK-LABEL: test_log(
 ;define <2 x half> @test_log(<2 x half> %a) #0 {
-;  %r = call <2 x half> @llvm.log.f16(<2 x half> %a)
+;  %r = call <2 x half> @llvm.log.v2f16(<2 x half> %a)
 ;  ret <2 x half> %r
 ;}
 
 ;;; Can't do this yet: requires libcall.
 ; XCHECK-LABEL: test_log10(
 ;define <2 x half> @test_log10(<2 x half> %a) #0 {
-;  %r = call <2 x half> @llvm.log10.f16(<2 x half> %a)
+;  %r = call <2 x half> @llvm.log10.v2f16(<2 x half> %a)
 ;  ret <2 x half> %r
 ;}
 
 ;;; Can't do this yet: requires libcall.
 ; XCHECK-LABEL: test_log2(
 ;define <2 x half> @test_log2(<2 x half> %a) #0 {
-;  %r = call <2 x half> @llvm.log2.f16(<2 x half> %a)
+;  %r = call <2 x half> @llvm.log2.v2f16(<2 x half> %a)
 ;  ret <2 x half> %r
 ;}
 
@@ -1141,7 +1141,7 @@ define <2 x half> @test_cos(<2 x half> %a) #0 #1 {
 ; CHECK:      st.param.b32    [func_retval0+0], [[R]];
 ; CHECK:      ret
 define <2 x half> @test_fma(<2 x half> %a, <2 x half> %b, <2 x half> %c) #0 {
-  %r = call <2 x half> @llvm.fma.f16(<2 x half> %a, <2 x half> %b, <2 x half> %c)
+  %r = call <2 x half> @llvm.fma.v2f16(<2 x half> %a, <2 x half> %b, <2 x half> %c)
   ret <2 x half> %r
 }
 
@@ -1158,7 +1158,7 @@ define <2 x half> @test_fma(<2 x half> %a, <2 x half> %b, <2 x half> %c) #0 {
 ; CHECK:      st.param.b32    [func_retval0+0], [[R]];
 ; CHECK:      ret;
 define <2 x half> @test_fabs(<2 x half> %a) #0 {
-  %r = call <2 x half> @llvm.fabs.f16(<2 x half> %a)
+  %r = call <2 x half> @llvm.fabs.v2f16(<2 x half> %a)
   ret <2 x half> %r
 }
 
@@ -1179,7 +1179,7 @@ define <2 x half> @test_fabs(<2 x half> %a) #0 {
 ; CHECK:      st.param.b32    [func_retval0+0], [[R]];
 ; CHECK:      ret;
 define <2 x half> @test_minnum(<2 x half> %a, <2 x half> %b) #0 {
-  %r = call <2 x half> @llvm.minnum.f16(<2 x half> %a, <2 x half> %b)
+  %r = call <2 x half> @llvm.minnum.v2f16(<2 x half> %a, <2 x half> %b)
   ret <2 x half> %r
 }
 
@@ -1200,7 +1200,7 @@ define <2 x half> @test_minnum(<2 x half> %a, <2 x half> %b) #0 {
 ; CHECK:      st.param.b32    [func_retval0+0], [[R]];
 ; CHECK:      ret;
 define <2 x half> @test_maxnum(<2 x half> %a, <2 x half> %b) #0 {
-  %r = call <2 x half> @llvm.maxnum.f16(<2 x half> %a, <2 x half> %b)
+  %r = call <2 x half> @llvm.maxnum.v2f16(<2 x half> %a, <2 x half> %b)
   ret <2 x half> %r
 }
 
@@ -1225,7 +1225,7 @@ define <2 x half> @test_maxnum(<2 x half> %a, <2 x half> %b) #0 {
 ; CHECK:      st.param.b32    [func_retval0+0], [[R]];
 ; CHECK:      ret;
 define <2 x half> @test_copysign(<2 x half> %a, <2 x half> %b) #0 {
-  %r = call <2 x half> @llvm.copysign.f16(<2 x half> %a, <2 x half> %b)
+  %r = call <2 x half> @llvm.copysign.v2f16(<2 x half> %a, <2 x half> %b)
   ret <2 x half> %r
 }
 
@@ -1254,7 +1254,7 @@ define <2 x half> @test_copysign(<2 x half> %a, <2 x half> %b) #0 {
 ; CHECK:      ret;
 define <2 x half> @test_copysign_f32(<2 x half> %a, <2 x float> %b) #0 {
   %tb = fptrunc <2 x float> %b to <2 x half>
-  %r = call <2 x half> @llvm.copysign.f16(<2 x half> %a, <2 x half> %tb)
+  %r = call <2 x half> @llvm.copysign.v2f16(<2 x half> %a, <2 x half> %tb)
   ret <2 x half> %r
 }
 
@@ -1283,7 +1283,7 @@ define <2 x half> @test_copysign_f32(<2 x half> %a, <2 x float> %b) #0 {
 ; CHECK:      ret;
 define <2 x half> @test_copysign_f64(<2 x half> %a, <2 x double> %b) #0 {
   %tb = fptrunc <2 x double> %b to <2 x half>
-  %r = call <2 x half> @llvm.copysign.f16(<2 x half> %a, <2 x half> %tb)
+  %r = call <2 x half> @llvm.copysign.v2f16(<2 x half> %a, <2 x half> %tb)
   ret <2 x half> %r
 }
 
@@ -1311,7 +1311,7 @@ define <2 x half> @test_copysign_f64(<2 x half> %a, <2 x double> %b) #0 {
 ; CHECK:      st.param.v2.f32 [func_retval0+0], {[[XR0]], [[XR1]]};
 ; CHECK:      ret;
 define <2 x float> @test_copysign_extended(<2 x half> %a, <2 x half> %b) #0 {
-  %r = call <2 x half> @llvm.copysign.f16(<2 x half> %a, <2 x half> %b)
+  %r = call <2 x half> @llvm.copysign.v2f16(<2 x half> %a, <2 x half> %b)
   %xr = fpext <2 x half> %r to <2 x float>
   ret <2 x float> %xr
 }
@@ -1325,7 +1325,7 @@ define <2 x float> @test_copysign_extended(<2 x half> %a, <2 x half> %b) #0 {
 ; CHECK:      st.param.b32    [func_retval0+0], [[R]];
 ; CHECK:      ret;
 define <2 x half> @test_floor(<2 x half> %a) #0 {
-  %r = call <2 x half> @llvm.floor.f16(<2 x half> %a)
+  %r = call <2 x half> @llvm.floor.v2f16(<2 x half> %a)
   ret <2 x half> %r
 }
 
@@ -1338,7 +1338,7 @@ define <2 x half> @test_floor(<2 x half> %a) #0 {
 ; CHECK:      st.param.b32    [func_retval0+0], [[R]];
 ; CHECK:      ret;
 define <2 x half> @test_ceil(<2 x half> %a) #0 {
-  %r = call <2 x half> @llvm.ceil.f16(<2 x half> %a)
+  %r = call <2 x half> @llvm.ceil.v2f16(<2 x half> %a)
   ret <2 x half> %r
 }
 
@@ -1351,7 +1351,7 @@ define <2 x half> @test_ceil(<2 x half> %a) #0 {
 ; CHECK:      st.param.b32    [func_retval0+0], [[R]];
 ; CHECK:      ret;
 define <2 x half> @test_trunc(<2 x half> %a) #0 {
-  %r = call <2 x half> @llvm.trunc.f16(<2 x half> %a)
+  %r = call <2 x half> @llvm.trunc.v2f16(<2 x half> %a)
   ret <2 x half> %r
 }
 
@@ -1364,7 +1364,7 @@ define <2 x half> @test_trunc(<2 x half> %a) #0 {
 ; CHECK:      st.param.b32    [func_retval0+0], [[R]];
 ; CHECK:      ret;
 define <2 x half> @test_rint(<2 x half> %a) #0 {
-  %r = call <2 x half> @llvm.rint.f16(<2 x half> %a)
+  %r = call <2 x half> @llvm.rint.v2f16(<2 x half> %a)
   ret <2 x half> %r
 }
 
@@ -1377,7 +1377,7 @@ define <2 x half> @test_rint(<2 x half> %a) #0 {
 ; CHECK:      st.param.b32    [func_retval0+0], [[R]];
 ; CHECK:      ret;
 define <2 x half> @test_nearbyint(<2 x half> %a) #0 {
-  %r = call <2 x half> @llvm.nearbyint.f16(<2 x half> %a)
+  %r = call <2 x half> @llvm.nearbyint.v2f16(<2 x half> %a)
   ret <2 x half> %r
 }
 
@@ -1390,7 +1390,7 @@ define <2 x half> @test_nearbyint(<2 x half> %a) #0 {
 ; CHECK:      st.param.b32    [func_retval0+0], [[R]];
 ; CHECK:      ret;
 define <2 x half> @test_round(<2 x half> %a) #0 {
-  %r = call <2 x half> @llvm.round.f16(<2 x half> %a)
+  %r = call <2 x half> @llvm.round.v2f16(<2 x half> %a)
   ret <2 x half> %r
 }
 
@@ -1419,7 +1419,7 @@ define <2 x half> @test_round(<2 x half> %a) #0 {
 ; CHECK:      st.param.b32    [func_retval0+0], [[R]];
 ; CHECK:      ret;
 define <2 x half> @test_fmuladd(<2 x half> %a, <2 x half> %b, <2 x half> %c) #0 {
-  %r = call <2 x half> @llvm.fmuladd.f16(<2 x half> %a, <2 x half> %b, <2 x half> %c)
+  %r = call <2 x half> @llvm.fmuladd.v2f16(<2 x half> %a, <2 x half> %b, <2 x half> %c)
   ret <2 x half> %r
 }
 

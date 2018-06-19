@@ -1,4 +1,5 @@
 // RUN: llvm-mc -triple arm64 -mattr=+crc -show-encoding < %s | FileCheck %s
+// RUN: llvm-mc -triple arm64 -mattr=+crc,+sve -show-encoding < %s | FileCheck %s
 
         crc32b  w5, w7, w20
         crc32h  w28, wzr, w30

@@ -347,18 +347,32 @@ private:
 
 class DiagnosticLocation {
   StringRef Filename;
-  unsigned Line = 0;
-  unsigned Column = 0;
-
+  unsigned BeginLine = 0;
+  unsigned BeginColumn = 0;
+  unsigned EndLine = 0;
+  unsigned EndColumn = 0;
 public:
   DiagnosticLocation() = default;
   DiagnosticLocation(const DebugLoc &DL);
+  DiagnosticLocation(const DebugLoc &BeginLoc, const DebugLoc &EndLoc);
   DiagnosticLocation(const DISubprogram *SP);
 
   bool isValid() const { return !Filename.empty(); }
   StringRef getFilename() const { return Filename; }
-  unsigned getLine() const { return Line; }
-  unsigned getColumn() const { return Column; }
+  unsigned getLine() const { return BeginLine; }
+  unsigned getColumn() const { return BeginColumn; }
+
+  // For range
+  unsigned getBeginLine() const { return BeginLine; }
+  unsigned getEndLine() const { return EndLine; }
+  unsigned getBeginColumn() const { return BeginColumn; }
+  unsigned getEndColumn() const { return EndColumn; }
+
+  bool isRange() const {
+    return EndLine > 0 && BeginLine > 0 &&
+           (EndLine > BeginLine ||
+            (EndLine == BeginLine && EndColumn > BeginColumn));
+  }
 };
 
 /// Common features for diagnostics with an associated location.
@@ -383,6 +397,9 @@ public:
   /// Return location information for this diagnostic in three parts:
   /// the source file name, line number and column.
   void getLocation(StringRef *Filename, unsigned *Line, unsigned *Column) const;
+  void getLocationRange(StringRef *Filename, unsigned *BeginLine,
+                        unsigned *BeginColumn, unsigned *EndLine,
+                        unsigned *EndColumn) const;
 
   const Function &getFunction() const { return Fn; }
   DiagnosticLocation getLocation() const { return Loc; }
@@ -417,6 +434,7 @@ public:
     DiagnosticLocation Loc;
 
     explicit Argument(StringRef Str = "") : Key("String"), Val(Str) {}
+    Argument(StringRef Key, std::string V) : Key(Key), Val(V) {}
     Argument(StringRef Key, const Value *V);
     Argument(StringRef Key, const Type *T);
     Argument(StringRef Key, int N);
@@ -480,6 +498,14 @@ public:
   bool isAnalysis() const {
     return (getKind() == DK_OptimizationRemarkAnalysis ||
             getKind() == DK_MachineOptimizationRemarkAnalysis);
+  }
+
+  typedef SmallVectorImpl<Argument>::const_iterator iterator;
+  iterator arg_begin() const { return Args.begin(); };
+  iterator arg_end() const { return Args.end(); };
+
+  const Argument& getArgument(unsigned I) const {
+    return Args[I];
   }
 
 protected:
@@ -547,6 +573,8 @@ public:
             Orig.RemarkName, Orig.getFunction(), Orig.getLocation()),
         CodeRegion(Orig.getCodeRegion()) {
     *this << Prepend;
+    if (Orig.FirstExtraArgIndex != -1)
+      FirstExtraArgIndex = Orig.FirstExtraArgIndex + 1;
     std::copy(Orig.Args.begin(), Orig.Args.end(), std::back_inserter(Args));
   }
 

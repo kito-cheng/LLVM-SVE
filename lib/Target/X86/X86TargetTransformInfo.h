@@ -47,10 +47,21 @@ public:
 
   /// @}
 
+  /// \name Cache TTI Implementation
+  /// @{
+  llvm::Optional<unsigned> getCacheSize(
+    TargetTransformInfo::CacheLevel Level) const;
+  llvm::Optional<unsigned> getCacheAssociativity(
+    TargetTransformInfo::CacheLevel Level) const;
+  /// @}
+
   /// \name Vector TTI Implementations
   /// @{
 
   unsigned getNumberOfRegisters(bool Vector);
+  unsigned getRegisterBitWidthUpperBound(bool Vector) {
+    return getRegisterBitWidth(Vector);
+  }
   unsigned getRegisterBitWidth(bool Vector) const;
   unsigned getLoadStoreVecRegBitWidth(unsigned AS) const;
   unsigned getMaxInterleaveFactor(unsigned VF);
@@ -73,6 +84,11 @@ public:
                             unsigned AddressSpace);
   int getGatherScatterOpCost(unsigned Opcode, Type *DataTy, Value *Ptr,
                              bool VariableMask, unsigned Alignment);
+  unsigned getVectorMemoryOpCost(unsigned Opcode, Type *Src, Value *Ptr,
+                                 unsigned Alignment,
+                                 unsigned AddressSpace,
+                                 const MemAccessInfo &Info,
+                                 Instruction *I);
   int getAddressComputationCost(Type *PtrTy, ScalarEvolution *SE,
                                 const SCEV *Ptr);
 

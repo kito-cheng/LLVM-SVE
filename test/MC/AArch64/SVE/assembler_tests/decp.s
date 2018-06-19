@@ -1,0 +1,226 @@
+// RUN: llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -mattr=+sve < %s | FileCheck %s
+// RUN: not llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -mattr=-sve 2>&1 < %s | FileCheck --check-prefix=CHECK-ERROR %s
+decp    x23, p13.d  // 00100101-11101101-10001001-10110111
+// CHECK: decp    x23, p13.d // encoding: [0xb7,0x89,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10001001-10110111
+DECP    X23, P13.D  // 00100101-11101101-10001001-10110111
+// CHECK: decp    x23, p13.d // encoding: [0xb7,0x89,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10001001-10110111
+decp    xzr, p15.h  // 00100101-01101101-10001001-11111111
+// CHECK: decp    xzr, p15.h // encoding: [0xff,0x89,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10001001-11111111
+DECP    XZR, P15.H  // 00100101-01101101-10001001-11111111
+// CHECK: decp    xzr, p15.h // encoding: [0xff,0x89,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10001001-11111111
+decp    z21.h, p10  // 00100101-01101101-10000001-01010101
+// CHECK: decp    z21.h, p10 // encoding: [0x55,0x81,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10000001-01010101
+DECP    Z21.H, P10  // 00100101-01101101-10000001-01010101
+// CHECK: decp    z21.h, p10 // encoding: [0x55,0x81,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10000001-01010101
+decp    z31.s, p15  // 00100101-10101101-10000001-11111111
+// CHECK: decp    z31.s, p15 // encoding: [0xff,0x81,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10000001-11111111
+DECP    Z31.S, P15  // 00100101-10101101-10000001-11111111
+// CHECK: decp    z31.s, p15 // encoding: [0xff,0x81,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10000001-11111111
+decp    z23.d, p13  // 00100101-11101101-10000001-10110111
+// CHECK: decp    z23.d, p13 // encoding: [0xb7,0x81,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10000001-10110111
+DECP    Z23.D, P13  // 00100101-11101101-10000001-10110111
+// CHECK: decp    z23.d, p13 // encoding: [0xb7,0x81,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10000001-10110111
+decp    x23, p13.b  // 00100101-00101101-10001001-10110111
+// CHECK: decp    x23, p13.b // encoding: [0xb7,0x89,0x2d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00101101-10001001-10110111
+DECP    X23, P13.B  // 00100101-00101101-10001001-10110111
+// CHECK: decp    x23, p13.b // encoding: [0xb7,0x89,0x2d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00101101-10001001-10110111
+decp    x21, p10.d  // 00100101-11101101-10001001-01010101
+// CHECK: decp    x21, p10.d // encoding: [0x55,0x89,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10001001-01010101
+DECP    X21, P10.D  // 00100101-11101101-10001001-01010101
+// CHECK: decp    x21, p10.d // encoding: [0x55,0x89,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10001001-01010101
+decp    x23, p13.h  // 00100101-01101101-10001001-10110111
+// CHECK: decp    x23, p13.h // encoding: [0xb7,0x89,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10001001-10110111
+DECP    X23, P13.H  // 00100101-01101101-10001001-10110111
+// CHECK: decp    x23, p13.h // encoding: [0xb7,0x89,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10001001-10110111
+decp    z31.d, p15  // 00100101-11101101-10000001-11111111
+// CHECK: decp    z31.d, p15 // encoding: [0xff,0x81,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10000001-11111111
+DECP    Z31.D, P15  // 00100101-11101101-10000001-11111111
+// CHECK: decp    z31.d, p15 // encoding: [0xff,0x81,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10000001-11111111
+decp    x21, p10.h  // 00100101-01101101-10001001-01010101
+// CHECK: decp    x21, p10.h // encoding: [0x55,0x89,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10001001-01010101
+DECP    X21, P10.H  // 00100101-01101101-10001001-01010101
+// CHECK: decp    x21, p10.h // encoding: [0x55,0x89,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10001001-01010101
+decp    z23.h, p13  // 00100101-01101101-10000001-10110111
+// CHECK: decp    z23.h, p13 // encoding: [0xb7,0x81,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10000001-10110111
+DECP    Z23.H, P13  // 00100101-01101101-10000001-10110111
+// CHECK: decp    z23.h, p13 // encoding: [0xb7,0x81,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10000001-10110111
+decp    x23, p13.s  // 00100101-10101101-10001001-10110111
+// CHECK: decp    x23, p13.s // encoding: [0xb7,0x89,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10001001-10110111
+DECP    X23, P13.S  // 00100101-10101101-10001001-10110111
+// CHECK: decp    x23, p13.s // encoding: [0xb7,0x89,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10001001-10110111
+decp    x0, p0.d  // 00100101-11101101-10001000-00000000
+// CHECK: decp    x0, p0.d // encoding: [0x00,0x88,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10001000-00000000
+DECP    X0, P0.D  // 00100101-11101101-10001000-00000000
+// CHECK: decp    x0, p0.d // encoding: [0x00,0x88,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10001000-00000000
+decp    z21.s, p10  // 00100101-10101101-10000001-01010101
+// CHECK: decp    z21.s, p10 // encoding: [0x55,0x81,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10000001-01010101
+DECP    Z21.S, P10  // 00100101-10101101-10000001-01010101
+// CHECK: decp    z21.s, p10 // encoding: [0x55,0x81,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10000001-01010101
+decp    z21.d, p10  // 00100101-11101101-10000001-01010101
+// CHECK: decp    z21.d, p10 // encoding: [0x55,0x81,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10000001-01010101
+DECP    Z21.D, P10  // 00100101-11101101-10000001-01010101
+// CHECK: decp    z21.d, p10 // encoding: [0x55,0x81,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10000001-01010101
+decp    z0.h, p0  // 00100101-01101101-10000000-00000000
+// CHECK: decp    z0.h, p0 // encoding: [0x00,0x80,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10000000-00000000
+DECP    Z0.H, P0  // 00100101-01101101-10000000-00000000
+// CHECK: decp    z0.h, p0 // encoding: [0x00,0x80,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10000000-00000000
+decp    x0, p0.s  // 00100101-10101101-10001000-00000000
+// CHECK: decp    x0, p0.s // encoding: [0x00,0x88,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10001000-00000000
+DECP    X0, P0.S  // 00100101-10101101-10001000-00000000
+// CHECK: decp    x0, p0.s // encoding: [0x00,0x88,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10001000-00000000
+decp    x0, p0.b  // 00100101-00101101-10001000-00000000
+// CHECK: decp    x0, p0.b // encoding: [0x00,0x88,0x2d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00101101-10001000-00000000
+DECP    X0, P0.B  // 00100101-00101101-10001000-00000000
+// CHECK: decp    x0, p0.b // encoding: [0x00,0x88,0x2d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00101101-10001000-00000000
+decp    xzr, p15.d  // 00100101-11101101-10001001-11111111
+// CHECK: decp    xzr, p15.d // encoding: [0xff,0x89,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10001001-11111111
+DECP    XZR, P15.D  // 00100101-11101101-10001001-11111111
+// CHECK: decp    xzr, p15.d // encoding: [0xff,0x89,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10001001-11111111
+decp    x21, p10.b  // 00100101-00101101-10001001-01010101
+// CHECK: decp    x21, p10.b // encoding: [0x55,0x89,0x2d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00101101-10001001-01010101
+DECP    X21, P10.B  // 00100101-00101101-10001001-01010101
+// CHECK: decp    x21, p10.b // encoding: [0x55,0x89,0x2d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00101101-10001001-01010101
+decp    xzr, p15.s  // 00100101-10101101-10001001-11111111
+// CHECK: decp    xzr, p15.s // encoding: [0xff,0x89,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10001001-11111111
+DECP    XZR, P15.S  // 00100101-10101101-10001001-11111111
+// CHECK: decp    xzr, p15.s // encoding: [0xff,0x89,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10001001-11111111
+decp    z31.h, p15  // 00100101-01101101-10000001-11111111
+// CHECK: decp    z31.h, p15 // encoding: [0xff,0x81,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10000001-11111111
+DECP    Z31.H, P15  // 00100101-01101101-10000001-11111111
+// CHECK: decp    z31.h, p15 // encoding: [0xff,0x81,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10000001-11111111
+decp    x0, p0.h  // 00100101-01101101-10001000-00000000
+// CHECK: decp    x0, p0.h // encoding: [0x00,0x88,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10001000-00000000
+DECP    X0, P0.H  // 00100101-01101101-10001000-00000000
+// CHECK: decp    x0, p0.h // encoding: [0x00,0x88,0x6d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01101101-10001000-00000000
+decp    z23.s, p13  // 00100101-10101101-10000001-10110111
+// CHECK: decp    z23.s, p13 // encoding: [0xb7,0x81,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10000001-10110111
+DECP    Z23.S, P13  // 00100101-10101101-10000001-10110111
+// CHECK: decp    z23.s, p13 // encoding: [0xb7,0x81,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10000001-10110111
+decp    x21, p10.s  // 00100101-10101101-10001001-01010101
+// CHECK: decp    x21, p10.s // encoding: [0x55,0x89,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10001001-01010101
+DECP    X21, P10.S  // 00100101-10101101-10001001-01010101
+// CHECK: decp    x21, p10.s // encoding: [0x55,0x89,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10001001-01010101
+decp    xzr, p15.b  // 00100101-00101101-10001001-11111111
+// CHECK: decp    xzr, p15.b // encoding: [0xff,0x89,0x2d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00101101-10001001-11111111
+DECP    XZR, P15.B  // 00100101-00101101-10001001-11111111
+// CHECK: decp    xzr, p15.b // encoding: [0xff,0x89,0x2d,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00101101-10001001-11111111
+decp    z0.d, p0  // 00100101-11101101-10000000-00000000
+// CHECK: decp    z0.d, p0 // encoding: [0x00,0x80,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10000000-00000000
+DECP    Z0.D, P0  // 00100101-11101101-10000000-00000000
+// CHECK: decp    z0.d, p0 // encoding: [0x00,0x80,0xed,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11101101-10000000-00000000
+decp    z0.s, p0  // 00100101-10101101-10000000-00000000
+// CHECK: decp    z0.s, p0 // encoding: [0x00,0x80,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10000000-00000000
+DECP    Z0.S, P0  // 00100101-10101101-10000000-00000000
+// CHECK: decp    z0.s, p0 // encoding: [0x00,0x80,0xad,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10101101-10000000-00000000

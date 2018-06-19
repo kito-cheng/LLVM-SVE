@@ -17,6 +17,7 @@
 #include "MCTargetDesc/AArch64MCTargetDesc.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MCInstPrinter.h"
+#include "../Utils/AArch64BaseInfo.h"
 
 namespace llvm {
 
@@ -70,10 +71,9 @@ protected:
                          const MCSubtargetInfo &STI, raw_ostream &O);
   void printAddSubImm(const MCInst *MI, unsigned OpNum,
                       const MCSubtargetInfo &STI, raw_ostream &O);
-  void printLogicalImm32(const MCInst *MI, unsigned OpNum,
-                         const MCSubtargetInfo &STI, raw_ostream &O);
-  void printLogicalImm64(const MCInst *MI, unsigned OpNum,
-                         const MCSubtargetInfo &STI, raw_ostream &O);
+  template <typename T>
+  void printLogicalImm(const MCInst *MI, unsigned OpNum,
+                       const MCSubtargetInfo &STI, raw_ostream &O);
   void printShifter(const MCInst *MI, unsigned OpNum,
                     const MCSubtargetInfo &STI, raw_ostream &O);
   void printShiftedRegister(const MCInst *MI, unsigned OpNum,
@@ -90,6 +90,10 @@ protected:
                       const MCSubtargetInfo &STI, raw_ostream &O) {
     printMemExtend(MI, OpNum, O, SrcRegKind, Width);
   }
+  template<bool SignExtend, bool DoShift, int RegWidth, int ExtWidth,
+           char SrcRegKind>
+  void printRegShiftExtend(const MCInst *MI, unsigned OpNum,
+                      const MCSubtargetInfo &STI, raw_ostream &O);
 
   void printCondCode(const MCInst *MI, unsigned OpNum,
                      const MCSubtargetInfo &STI, raw_ostream &O);
@@ -123,6 +127,9 @@ protected:
 
   void printPrefetchOp(const MCInst *MI, unsigned OpNum,
                        const MCSubtargetInfo &STI, raw_ostream &O);
+
+  void printSVEPrefetchOp(const MCInst *MI, unsigned OpNum,
+                          const MCSubtargetInfo &STI, raw_ostream &O);
 
   void printPSBHintOp(const MCInst *MI, unsigned OpNum,
                       const MCSubtargetInfo &STI, raw_ostream &O);
@@ -158,10 +165,45 @@ protected:
                               const MCSubtargetInfo &STI, raw_ostream &O);
   void printSIMDType10Operand(const MCInst *MI, unsigned OpNum,
                               const MCSubtargetInfo &STI, raw_ostream &O);
+  void printImmPlusOneOperand(const MCInst *MI, unsigned OpNum,
+                              const MCSubtargetInfo &STI, raw_ostream &O);
   template<unsigned size>
   void printGPRSeqPairsClassOperand(const MCInst *MI, unsigned OpNum,
                                     const MCSubtargetInfo &STI,
                                     raw_ostream &O);
+  template<unsigned, unsigned>
+  void printNamedFPImm(const MCInst *MI, unsigned OpNum,
+                       const MCSubtargetInfo &STI, raw_ostream &O);
+  void printSVEPattern(const MCInst *MI, unsigned OpNum,
+                       const MCSubtargetInfo &STI, raw_ostream &O);
+  template<typename T>
+  void printSVEImm(T Value, raw_ostream &O);
+  template<typename T>
+  void printSVELogicalImm(const MCInst *MI, unsigned OpNum,
+                          const MCSubtargetInfo &STI, raw_ostream &O);
+  template<typename T>
+  void printImm8OptLsl(const MCInst *MI, unsigned OpNum,
+                       const MCSubtargetInfo &STI, raw_ostream &O);
+  void printMulImm4(const MCInst *MI, unsigned OpNum,
+                    const MCSubtargetInfo &STI, raw_ostream &O);
+  void printGPR64as32(const MCInst *MI, unsigned OpNum,
+                      const MCSubtargetInfo &STI, raw_ostream &O);
+  void printZPRasFPR8(const MCInst *MI, unsigned OpNum,
+                      const MCSubtargetInfo &STI, raw_ostream &O);
+  void printZPRasFPR16(const MCInst *MI, unsigned OpNum,
+                       const MCSubtargetInfo &STI, raw_ostream &O);
+  void printZPRasFPR32(const MCInst *MI, unsigned OpNum,
+                       const MCSubtargetInfo &STI, raw_ostream &O);
+  void printZPRasFPR64(const MCInst *MI, unsigned OpNum,
+                       const MCSubtargetInfo &STI, raw_ostream &O);
+  void printZPRasFPR128(const MCInst *MI, unsigned OpNum,
+                        const MCSubtargetInfo &STI, raw_ostream &O);
+  template <int Kind, int NumRegs>
+  void printZPRVectorList(const MCInst *MI, unsigned OpNum,
+                          const MCSubtargetInfo &STI, raw_ostream &O);
+  template <char = 0>
+  void printSVERegOp(const MCInst *MI, unsigned OpNum,
+                    const MCSubtargetInfo &STI, raw_ostream &O);
 };
 
 class AArch64AppleInstPrinter : public AArch64InstPrinter {

@@ -173,7 +173,7 @@ ModRefInfo AAResults::getModRefInfo(ImmutableCallSite CS,
     if (doesAccessArgPointees(MRB)) {
       for (auto AI = CS.arg_begin(), AE = CS.arg_end(); AI != AE; ++AI) {
         const Value *Arg = *AI;
-        if (!Arg->getType()->isPointerTy())
+        if (!Arg->getType()->isPtrOrPtrVectorTy())
           continue;
         unsigned ArgIdx = std::distance(CS.arg_begin(), AI);
         MemoryLocation ArgLoc = MemoryLocation::getForArgument(CS, ArgIdx, TLI);
@@ -242,7 +242,7 @@ ModRefInfo AAResults::getModRefInfo(ImmutableCallSite CS1,
     if (doesAccessArgPointees(CS2B)) {
       for (auto I = CS2.arg_begin(), E = CS2.arg_end(); I != E; ++I) {
         const Value *Arg = *I;
-        if (!Arg->getType()->isPointerTy())
+        if (!Arg->getType()->isPtrOrPtrVectorTy())
           continue;
         unsigned CS2ArgIdx = std::distance(CS2.arg_begin(), I);
         auto CS2ArgLoc = MemoryLocation::getForArgument(CS2, CS2ArgIdx, TLI);
@@ -272,7 +272,7 @@ ModRefInfo AAResults::getModRefInfo(ImmutableCallSite CS1,
     if (doesAccessArgPointees(CS1B)) {
       for (auto I = CS1.arg_begin(), E = CS1.arg_end(); I != E; ++I) {
         const Value *Arg = *I;
-        if (!Arg->getType()->isPointerTy())
+        if (!Arg->getType()->isPtrOrPtrVectorTy())
           continue;
         unsigned CS1ArgIdx = std::distance(CS1.arg_begin(), I);
         auto CS1ArgLoc = MemoryLocation::getForArgument(CS1, CS1ArgIdx, TLI);
@@ -484,7 +484,7 @@ ModRefInfo AAResults::callCapturesBefore(const Instruction *I,
     // Only look at the no-capture or byval pointer arguments.  If this
     // pointer were passed to arguments that were neither of these, then it
     // couldn't be no-capture.
-    if (!(*CI)->getType()->isPointerTy() ||
+    if (!(*CI)->getType()->isPtrOrPtrVectorTy() ||
         (!CS.doesNotCapture(ArgNo) &&
          ArgNo < CS.getNumArgOperands() && !CS.isByValArgument(ArgNo)))
       continue;

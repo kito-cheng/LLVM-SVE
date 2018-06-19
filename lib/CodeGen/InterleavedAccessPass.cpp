@@ -287,8 +287,9 @@ bool InterleavedAccess::lowerInterleavedLoad(
   unsigned Factor, Index;
 
   // Check if the first shufflevector is DE-interleave shuffle.
-  if (!isDeInterleaveMask(Shuffles[0]->getShuffleMask(), Factor, Index,
-                          MaxFactor))
+  SmallVector<int, 16> Mask;
+  if (!Shuffles[0]->getShuffleMask(Mask) ||
+      !isDeInterleaveMask(Mask, Factor, Index, MaxFactor))
     return false;
 
   // Holds the corresponding index for each DE-interleave shuffle.
@@ -303,8 +304,9 @@ bool InterleavedAccess::lowerInterleavedLoad(
     if (Shuffles[i]->getType() != VecTy)
       return false;
 
-    if (!isDeInterleaveMaskOfFactor(Shuffles[i]->getShuffleMask(), Factor,
-                                    Index))
+    SmallVector<int, 16> Mask;
+    if (!Shuffles[i]->getShuffleMask(Mask) ||
+        !isDeInterleaveMaskOfFactor(Mask, Factor, Index))
       return false;
 
     Indices.push_back(Index);
@@ -407,7 +409,9 @@ bool InterleavedAccess::lowerInterleavedStore(
   // Check if the shufflevector is RE-interleave shuffle.
   unsigned Factor;
   unsigned OpNumElts = SVI->getOperand(0)->getType()->getVectorNumElements();
-  if (!isReInterleaveMask(SVI->getShuffleMask(), Factor, MaxFactor, OpNumElts))
+  SmallVector<int, 16> Mask;
+  if (!SVI->getShuffleMask(Mask) ||
+      !isReInterleaveMask(Mask, Factor, MaxFactor, OpNumElts))
     return false;
 
   DEBUG(dbgs() << "IA: Found an interleaved store: " << *SI << "\n");

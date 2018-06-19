@@ -16,6 +16,7 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/DataTypes.h"
+#include "llvm/CodeGen/MachineBasicBlock.h"
 #include <cassert>
 #include <vector>
 
@@ -25,6 +26,9 @@ class MachineFunction;
 class MachineBasicBlock;
 class BitVector;
 class AllocaInst;
+
+// Forward references needed for StackRegion
+class MachineFrameInfo;
 
 /// The CalleeSavedInfo class tracks the information need to locate where a
 /// callee saved register is in the current frame.
@@ -40,6 +44,87 @@ public:
   unsigned getReg()                        const { return Reg; }
   int getFrameIdx()                        const { return FrameIdx; }
   void setFrameIdx(int FI)                       { FrameIdx = FI; }
+};
+
+/// The StackRegion class implements the handling of a stack region,
+/// other than the default region which is handled by PEI and
+/// TargetFrameLowering.
+class StackRegion {
+
+protected:
+  /// Label for the StackRegion to be used in DEBUG()
+  StringRef Name;
+
+  /// MaybeUsed is true when this StackRegion allocates or may allocate
+  /// objects.
+  bool MaybeUsed;
+
+  /// IsVarSized is true when the size of this region is unknown at compile time
+  bool IsVarSized;
+
+  /// The allocated size on the stack, filled during PEI.
+  /// The unit of RegionSize is target dependent (e.g. is probably not
+  /// in #bytes if this is a variable sized region)
+  int64_t RegionSize;
+
+  /// Vector of Callee Saves to be allocated on this StackRegion
+  std::vector<unsigned> CSRs;
+
+  /// Constructor is protected
+  StackRegion(bool isVarSized, StringRef name)
+      : Name(name), MaybeUsed(false), IsVarSized(isVarSized), RegionSize(-1) {}
+
+public:
+  virtual ~StackRegion() {}
+
+  /// Returns label given to this region
+  StringRef getName(void) const { return Name; }
+
+  /// Set the final size of this Region (after laying out)
+  void setRegionSize(int64_t S) {
+    assert(S >= 0 && "StackRegion size must be positive");
+    RegionSize = S;
+  }
+
+  /// Returns the final size of this Region (after laying out)
+  int64_t getRegionSize(void) const {
+    assert(RegionSize >= 0 && "StackRegion not yet laid out");
+    return RegionSize;
+  }
+
+  /// Returns if the specific CSR is allocated in this StackRegion
+  bool allocatesCSR(unsigned Reg) const {
+    return binary_search(CSRs.begin(), CSRs.end(), Reg);
+  }
+
+  const std::vector<unsigned> getCSRs(void) const {
+    return CSRs;
+  }
+
+  void setMaybeUsed(bool V = true) {
+    MaybeUsed = V;
+  }
+
+  bool maybeUsed(void) const { return MaybeUsed; }
+
+  /// Add Callee Saved Register to be allocated by this StackRegion
+  void addCSR(unsigned Reg) {
+    CSRs.push_back(Reg);
+  }
+
+  /// Register object to this StackRegion
+  void addObject(MachineFrameInfo &, int);
+  void removeObject(MachineFrameInfo &, int);
+
+  //===-----------------------------------------------------------===//
+  //               Methods to be implemented by target
+  //===-----------------------------------------------------------===//
+
+  /// Returns whether this StackRegion allocates registers of given class
+  virtual bool allocatesRegClass(const TargetRegisterClass *) const = 0;
+
+  /// Returns whether this StackRegion allocates data of given Type
+  virtual bool allocatesType(const Type *) const = 0;
 };
 
 /// The MachineFrameInfo class represents an abstract stack frame until
@@ -86,6 +171,12 @@ class MachineFrameInfo {
     // The required alignment of this stack slot.
     unsigned Alignment;
 
+    // [SVE]
+    // Region - Variable sized vectors are not allocated as normal stack
+    // objects, but will get a separate region with size unknown at
+    // compile-time.
+    StackRegion *Region;
+
     // If true, the value of the stack object is set before
     // entering the function and is not modified inside the function. By
     // default, fixed objects are immutable unless marked otherwise.
@@ -124,9 +215,10 @@ class MachineFrameInfo {
 
     StackObject(uint64_t Sz, unsigned Al, int64_t SP, bool IM,
                 bool isSS, const AllocaInst *Val, bool A)
-      : SPOffset(SP), Size(Sz), Alignment(Al), isImmutable(IM),
-        isSpillSlot(isSS), isStatepointSpillSlot(false), Alloca(Val),
-        PreAllocated(false), isAliased(A), isZExt(false), isSExt(false) {}
+        : SPOffset(SP), Size(Sz), Alignment(Al), Region(nullptr),
+          isImmutable(IM), isSpillSlot(isSS), isStatepointSpillSlot(false),
+          Alloca(Val), PreAllocated(false), isAliased(A), isZExt(false),
+          isSExt(false) {}
   };
 
   /// The alignment of the stack.
@@ -266,6 +358,9 @@ class MachineFrameInfo {
   /// stack objects like arguments so we can't treat them as immutable.
   bool HasTailCall = false;
 
+  /// Additional StackRegions
+  SmallVector<StackRegion *, 1> StackRegions;
+
   /// Not null, if shrink-wrapping found a better place for the prologue.
   MachineBasicBlock *Save = nullptr;
   /// Not null, if shrink-wrapping found a better place for the epilogue.
@@ -276,6 +371,37 @@ public:
                             bool ForcedRealign)
       : StackAlignment(StackAlignment), StackRealignable(StackRealignable),
         ForcedRealign(ForcedRealign) {}
+
+  ~MachineFrameInfo() {
+    for(StackRegion *SR : StackRegions)
+      delete SR;
+  }
+
+  /// addStackRegion - Register a new StackRegion handler that assigns regions
+  /// to stack objects and spills, and has functions to do its stacklayout.
+  void addStackRegion(StackRegion *SR) {
+    StackRegions.push_back(SR);
+  }
+
+  const SmallVectorImpl<StackRegion*> &getStackRegions() const {
+    return StackRegions;
+  }
+
+  StackRegion *getStackRegionToHandleCSR(unsigned Reg) const {
+    for (StackRegion *SR : StackRegions) {
+      if (SR->allocatesCSR(Reg))
+        return SR;
+    }
+    return nullptr;
+  }
+
+  StackRegion *getStackRegionToHandleRegClass(const TargetRegisterClass *RC) const {
+    for (StackRegion *SR : StackRegions) {
+      if (SR->allocatesRegClass(RC))
+        return SR;
+    }
+    return nullptr;
+  }
 
   /// Return true if there are any stack objects in this function.
   bool hasStackObjects() const { return !Objects.empty(); }
@@ -392,6 +518,18 @@ public:
     assert(unsigned(ObjectIdx+NumFixedObjects) < Objects.size() &&
            "Invalid Object Idx!");
     Objects[ObjectIdx+NumFixedObjects].Size = Size;
+  }
+
+  StackRegion *getObjectRegion(int ObjectIdx) const {
+    assert(unsigned(ObjectIdx + NumFixedObjects) < Objects.size() &&
+           "Invalid Object Idx!");
+    return Objects[ObjectIdx + NumFixedObjects].Region;
+  }
+
+  void setObjectRegion(int ObjectIdx, StackRegion *Region) {
+    assert(unsigned(ObjectIdx + NumFixedObjects) < Objects.size() &&
+           "Invalid Object Idx!");
+    Objects[ObjectIdx + NumFixedObjects].Region = Region;
   }
 
   /// Return the alignment of the specified stack object.
@@ -633,8 +771,15 @@ public:
 
   /// Remove or mark dead a statically sized stack object.
   void RemoveStackObject(int ObjectIdx) {
+    StackObject& O = Objects[ObjectIdx+NumFixedObjects];
+
     // Mark it dead.
-    Objects[ObjectIdx+NumFixedObjects].Size = ~0ULL;
+    O.Size = ~0ULL;
+
+    // Remove from StackRegion
+    if (O.Region != nullptr) {
+      O.Region->removeObject(*this, ObjectIdx);
+    }
   }
 
   /// Notify the MachineFrameInfo object that a variable sized object has been

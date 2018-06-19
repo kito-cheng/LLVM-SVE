@@ -506,7 +506,7 @@ private:
 
 public:
   /// Return a ConstantVector with the specified constant in each element.
-  static Constant *getSplat(unsigned NumElts, Constant *Elt);
+  static Constant *getSplat(VectorType::ElementCount EC, Constant *Elt);
 
   /// Specialize the getType() method to always return a VectorType,
   /// which reduces the amount of casting needed in parts of the compiler.
@@ -1161,6 +1161,12 @@ public:
                                     Type *OnlyIfReducedTy = nullptr);
   static Constant *getShuffleVector(Constant *V1, Constant *V2, Constant *Mask,
                                     Type *OnlyIfReducedTy = nullptr);
+  static Constant *getElementCount(Type *Ty, Constant *C,
+                                   Type *OnlyIfReducedTy = nullptr);
+  static Constant *getSeriesVector(VectorType::ElementCount EC,
+                                   Constant *Start, Constant* Step,
+                                   bool HasNUW = false, bool HasNSW = false,
+                                   Type *OnlyIfReducedTy = nullptr);
   static Constant *getExtractValue(Constant *Agg, ArrayRef<unsigned> Idxs,
                                    Type *OnlyIfReducedTy = nullptr);
   static Constant *getInsertValue(Constant *Agg, Constant *Val,
@@ -1235,6 +1241,28 @@ struct OperandTraits<ConstantExpr> :
 DEFINE_TRANSPARENT_OPERAND_ACCESSORS(ConstantExpr, Constant)
 
 //===----------------------------------------------------------------------===//
+/// A constant vector representing the numeric sequence "0, 1, 2, 3, 4...".
+///
+class StepVector final : public ConstantData {
+  StepVector(const StepVector &) = delete;
+
+  friend class Constant;
+  void destroyConstantImpl();
+
+  explicit StepVector(Type *T) : ConstantData(T, StepVectorVal) {}
+
+public:
+  /// Static factory methods - Return a 'stepvector' object of the specified
+  /// type or a ConstantVector if the result's vector length is known.
+  static Constant *get(Type *T);
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast:
+  static bool classof(const Value *V) {
+    return V->getValueID() == StepVectorVal;
+  }
+};
+
+//===----------------------------------------------------------------------===//
 /// 'undef' values are things that do not have specified contents.
 /// These are used for a variety of purposes, including global variable
 /// initializers and operands to instructions.  'undef' values can occur with
@@ -1278,6 +1306,28 @@ public:
   /// Methods for support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const Value *V) {
     return V->getValueID() == UndefValueVal;
+  }
+};
+
+//===----------------------------------------------------------------------===//
+/// A constant representing the scaling factor 'n' of a scalable vector of the
+/// form '<n x #elements x ty>'.
+///
+class VScale final : public ConstantData {
+  VScale(const VScale &) = delete;
+
+  friend class Constant;
+  void destroyConstantImpl();
+
+  explicit VScale(Type *T) : ConstantData(T, VScaleVal) {}
+
+public:
+  /// Static factory methods - Return a 'vscale' object of the specified type.
+  static Constant *get(Type *T);
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast:
+  static bool classof(const Value *V) {
+    return V->getValueID() == VScaleVal;
   }
 };
 

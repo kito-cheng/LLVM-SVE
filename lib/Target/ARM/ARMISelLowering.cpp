@@ -13904,7 +13904,8 @@ bool ARMTargetLowering::lowerInterleavedStore(StoreInst *SI,
 
   assert(isTypeLegal(EVT::getEVT(SubVecTy)) && "Illegal vstN vector type!");
 
-  auto Mask = SVI->getShuffleMask();
+  SmallVector<int, 16> Mask;
+  SVI->getShuffleMask(Mask);
 
   Type *Int8Ptr = Builder.getInt8PtrTy(SI->getPointerAddressSpace());
   Type *Tys[] = {Int8Ptr, SubVecTy};

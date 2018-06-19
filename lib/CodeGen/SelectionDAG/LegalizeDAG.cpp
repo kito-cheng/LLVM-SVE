@@ -322,6 +322,9 @@ SDValue SelectionDAGLegalize::PerformInsertVectorEltInMemory(SDValue Vec,
   SDValue Tmp2 = Val;
   SDValue Tmp3 = Idx;
 
+  assert(!Vec.getValueType().isScalableVector() &&
+         "This code does not yet implement VL scaled spills/fills");
+
   // If the target doesn't support this, we have to spill the input vector
   // to a temporary stack slot, update the element, then reload it.  This is
   // badness.  We could also load the value into a vector register (either
@@ -1071,6 +1074,9 @@ void SelectionDAGLegalize::LegalizeOp(SDNode *Node) {
       return;
     }
     break;
+  case ISD::VSCALE:
+    Action = TLI.getOperationAction(Node->getOpcode(), Node->getValueType(0));
+    break;
   case ISD::STRICT_FSQRT:
   case ISD::STRICT_FPOW:
   case ISD::STRICT_FPOWI:
@@ -1208,6 +1214,7 @@ void SelectionDAGLegalize::LegalizeOp(SDNode *Node) {
 }
 
 SDValue SelectionDAGLegalize::ExpandExtractFromVectorThroughStack(SDValue Op) {
+  assert(!Op.getValueType().isScalableVector() && "WA not yet supported!");
   SDValue Vec = Op.getOperand(0);
   SDValue Idx = Op.getOperand(1);
   SDLoc dl(Op);
@@ -1288,6 +1295,7 @@ SDValue SelectionDAGLegalize::ExpandExtractFromVectorThroughStack(SDValue Op) {
 
 SDValue SelectionDAGLegalize::ExpandInsertToVectorThroughStack(SDValue Op) {
   assert(Op.getValueType().isVector() && "Non-vector insert subvector!");
+  assert(!Op.getValueType().isScalableVector() && "WA not yet supported!");
 
   SDValue Vec  = Op.getOperand(0);
   SDValue Part = Op.getOperand(1);
@@ -1315,6 +1323,8 @@ SDValue SelectionDAGLegalize::ExpandInsertToVectorThroughStack(SDValue Op) {
 }
 
 SDValue SelectionDAGLegalize::ExpandVectorBuildThroughStack(SDNode* Node) {
+  assert(!Node->getValueType(0).isScalableVector() &&
+         "WA not yet supported!");
   // We can't handle this case efficiently.  Allocate a sufficiently
   // aligned object on the stack, store each element into it, then load
   // the result as a vector.
@@ -4458,6 +4468,35 @@ void SelectionDAGLegalize::PromoteNode(SDNode *Node) {
     MVT EltVT = OVT.getVectorElementType();
     MVT NewEltVT = NVT.getVectorElementType();
 
+    SDValue Vec = Node->getOperand(0);
+    SDValue Idx = Node->getOperand(1);
+    SDLoc SL(Node);
+
+    if (OVT.getSizeInBits() != NVT.getSizeInBits()) {
+      assert(NVT.isVector() &&
+             OVT.getVectorNumElements() == NVT.getVectorNumElements() &&
+             "Invalid promote type for extract.");
+      assert(NewEltVT.bitsGT(EltVT) && "Expected promoted element type.");
+
+      Vec = DAG.getNode(ISD::ZERO_EXTEND, SL, NVT, Vec);
+
+      // Result type is type of this node. If the element we extract is wider,
+      // we need to truncate it. In the opposite case, e.g. extracting an i8,
+      // we leave the zero_extend to the instruction itself.
+      EVT ResVT = Node->getValueType(0);
+      if (NewEltVT.bitsGT(ResVT.getSimpleVT())) {
+        SDValue Ex = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, SL,
+                                 NewEltVT, Vec, Idx);
+        SDValue Res = DAG.getNode(ISD::TRUNCATE, SL, ResVT, Ex);
+        Results.push_back(Res);
+      } else {
+        SDValue Res = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, SL, ResVT, Vec, Idx);
+        Results.push_back(Res);
+      }
+
+      break;
+    }
+
     // Handle bitcasts to a different vector type with the same total bit size.
     //
     // e.g. v2i64 = extract_vector_elt x:v2i64, y:i32
@@ -4476,13 +4515,11 @@ void SelectionDAGLegalize::PromoteNode(SDNode *Node) {
     MVT MidVT = getPromotedVectorElementType(TLI, EltVT, NewEltVT);
     unsigned NewEltsPerOldElt = MidVT.getVectorNumElements();
 
-    SDValue Idx = Node->getOperand(1);
     EVT IdxVT = Idx.getValueType();
-    SDLoc SL(Node);
     SDValue Factor = DAG.getConstant(NewEltsPerOldElt, SL, IdxVT);
     SDValue NewBaseIdx = DAG.getNode(ISD::MUL, SL, IdxVT, Idx, Factor);
 
-    SDValue CastVec = DAG.getNode(ISD::BITCAST, SL, NVT, Node->getOperand(0));
+    SDValue CastVec = DAG.getNode(ISD::BITCAST, SL, NVT, Vec);
 
     SmallVector<SDValue, 8> NewOps;
     for (unsigned I = 0; I < NewEltsPerOldElt; ++I) {
@@ -4501,6 +4538,26 @@ void SelectionDAGLegalize::PromoteNode(SDNode *Node) {
   case ISD::INSERT_VECTOR_ELT: {
     MVT EltVT = OVT.getVectorElementType();
     MVT NewEltVT = NVT.getVectorElementType();
+
+    SDValue Vec = Node->getOperand(0);
+    SDValue Val = Node->getOperand(1);
+    SDValue Idx = Node->getOperand(2);
+    SDLoc SL(Node);
+
+    if (OVT.getSizeInBits() != NVT.getSizeInBits()) {
+      assert(NVT.isVector() &&
+             OVT.getVectorNumElements() == NVT.getVectorNumElements() &&
+             "Invalid promote type for insert_vector_elt.");
+      assert(NewEltVT.bitsGT(EltVT) && "Expected promoted element type.");
+
+      Vec = DAG.getNode(ISD::ANY_EXTEND, SL, NVT, Vec);
+      if (Val.getValueType().bitsLT(NewEltVT))
+        Val = DAG.getNode(ISD::ANY_EXTEND, SL, NewEltVT, Val);
+
+      SDValue Ins = DAG.getNode(ISD::INSERT_VECTOR_ELT, SL, NVT, Vec, Val, Idx);
+      Results.push_back(DAG.getNode(ISD::TRUNCATE, SL, OVT, Ins));
+      break;
+    }
 
     // Handle bitcasts to a different vector type with the same total bit size
     //
@@ -4522,15 +4579,11 @@ void SelectionDAGLegalize::PromoteNode(SDNode *Node) {
     MVT MidVT = getPromotedVectorElementType(TLI, EltVT, NewEltVT);
     unsigned NewEltsPerOldElt = MidVT.getVectorNumElements();
 
-    SDValue Val = Node->getOperand(1);
-    SDValue Idx = Node->getOperand(2);
     EVT IdxVT = Idx.getValueType();
-    SDLoc SL(Node);
-
     SDValue Factor = DAG.getConstant(NewEltsPerOldElt, SDLoc(), IdxVT);
     SDValue NewBaseIdx = DAG.getNode(ISD::MUL, SL, IdxVT, Idx, Factor);
 
-    SDValue CastVec = DAG.getNode(ISD::BITCAST, SL, NVT, Node->getOperand(0));
+    SDValue CastVec = DAG.getNode(ISD::BITCAST, SL, NVT, Vec);
     SDValue CastVal = DAG.getNode(ISD::BITCAST, SL, MidVT, Val);
 
     SDValue NewVec = CastVec;

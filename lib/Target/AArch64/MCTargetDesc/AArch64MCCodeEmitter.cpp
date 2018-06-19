@@ -84,6 +84,14 @@ public:
                                SmallVectorImpl<MCFixup> &Fixups,
                                const MCSubtargetInfo &STI) const;
 
+  uint32_t getSveFcmlaRotImmBits(const MCInst &MI, unsigned OpIdx,
+                                 SmallVectorImpl<MCFixup> &Fixups,
+                                 const MCSubtargetInfo &STI) const;
+
+  uint32_t getSveFcaddRotImmBits(const MCInst &MI, unsigned OpIdx,
+                                 SmallVectorImpl<MCFixup> &Fixups,
+                                 const MCSubtargetInfo &STI) const;
+
   /// getCondBranchTargetOpValue - Return the encoded value for a conditional
   /// branch target.
   uint32_t getCondBranchTargetOpValue(const MCInst &MI, unsigned OpIdx,
@@ -180,6 +188,19 @@ public:
   unsigned fixOneOperandFPComparison(const MCInst &MI, unsigned EncodedValue,
                                      const MCSubtargetInfo &STI) const;
 
+  uint32_t getSVEIncDecImm(const MCInst &MI, unsigned OpIdx,
+                           SmallVectorImpl<MCFixup> &Fixups,
+                           const MCSubtargetInfo &STI) const;
+
+  unsigned getSImm8OptLsl(const MCInst &MI, unsigned OpIdx,
+                        SmallVectorImpl<MCFixup> &Fixups,
+                        const MCSubtargetInfo &STI) const;
+
+  template<int Scale>
+  uint32_t getSVEScaledImm(const MCInst &MI, unsigned OpIdx,
+                           SmallVectorImpl<MCFixup> &Fixups,
+                           const MCSubtargetInfo &STI) const;
+
 private:
   uint64_t computeAvailableFeatures(const FeatureBitset &FB) const;
   void verifyInstructionPredicates(const MCInst &MI,
@@ -258,7 +279,7 @@ AArch64MCCodeEmitter::getAddSubImmOpValue(const MCInst &MI, unsigned OpIdx,
   assert(AArch64_AM::getShiftType(MO1.getImm()) == AArch64_AM::LSL &&
          "unexpected shift type for add/sub immediate");
   unsigned ShiftVal = AArch64_AM::getShiftValue(MO1.getImm());
-  assert((ShiftVal == 0 || ShiftVal == 12) &&
+  assert((ShiftVal == 0 || ShiftVal == 12 || ShiftVal == 8) &&
          "unexpected shift value for add/sub immediate");
   if (MO.isImm())
     return MO.getImm() | (ShiftVal == 0 ? 0 : (1 << ShiftVal));
@@ -280,6 +301,44 @@ AArch64MCCodeEmitter::getAddSubImmOpValue(const MCInst &MI, unsigned OpIdx,
       ShiftVal = 12;
   }
   return ShiftVal == 0 ? 0 : (1 << ShiftVal);
+}
+
+uint32_t
+AArch64MCCodeEmitter::getSveFcmlaRotImmBits(const MCInst &MI, unsigned OpIdx,
+                                            SmallVectorImpl<MCFixup> &Fixups,
+                                            const MCSubtargetInfo &STI) const {
+  const MCOperand &MO = MI.getOperand(OpIdx);
+  assert(MO.isImm());
+  switch (MO.getImm()) {
+  case 0:
+    return 0x0;
+  case 90:
+    return 0x1;
+  case 180:
+    return 0x2;
+  case 270:
+    return 0x3;
+  default:
+    llvm_unreachable("Invalid fcmla immediate");
+  }
+  return 0;
+}
+
+uint32_t
+AArch64MCCodeEmitter::getSveFcaddRotImmBits(const MCInst &MI, unsigned OpIdx,
+                                            SmallVectorImpl<MCFixup> &Fixups,
+                                            const MCSubtargetInfo &STI) const {
+  const MCOperand &MO = MI.getOperand(OpIdx);
+  assert(MO.isImm());
+  switch (MO.getImm()) {
+  case 90:
+    return 0x0;
+  case 270:
+    return 0x1;
+  default:
+    llvm_unreachable("Invalid fcmla immediate");
+  }
+  return 0;
 }
 
 /// getCondBranchTargetOpValue - Return the encoded value for a conditional
@@ -601,6 +660,42 @@ unsigned AArch64MCCodeEmitter::fixOneOperandFPComparison(
   // as 0, but is ignored by the processor.
   EncodedValue &= ~(0x1f << 16);
   return EncodedValue;
+}
+
+uint32_t
+AArch64MCCodeEmitter::getSVEIncDecImm(const MCInst &MI, unsigned OpIdx,
+                                      SmallVectorImpl<MCFixup> &Fixups,
+                                      const MCSubtargetInfo &STI) const {
+  const MCOperand &MO = MI.getOperand(OpIdx);
+  assert(MO.isImm() && "Expected an immediate value for the scale amount!");
+  return MO.getImm() - 1;
+}
+
+unsigned
+AArch64MCCodeEmitter::getSImm8OptLsl(const MCInst &MI, unsigned OpIdx,
+                                     SmallVectorImpl<MCFixup> &Fixups,
+                                     const MCSubtargetInfo &STI) const {
+  // Suboperands are [imm, shifter].
+  const MCOperand &MO = MI.getOperand(OpIdx);
+  const MCOperand &MO1 = MI.getOperand(OpIdx + 1);
+  assert(AArch64_AM::getShiftType(MO1.getImm()) == AArch64_AM::LSL &&
+         "Unexpected shift type for cpy/dup immediate.");
+  unsigned ShiftVal = AArch64_AM::getShiftValue(MO1.getImm());
+  assert((ShiftVal == 0 || ShiftVal == 8) &&
+         "Unexpected shift value for cpy/dup immediate.");
+
+  assert(MO.isImm() && "Unexpected second operand type!");
+  return (MO.getImm() & 0xff) | (ShiftVal == 0 ? 0 : (1 << ShiftVal));
+}
+
+template<int Scale>
+uint32_t
+AArch64MCCodeEmitter::getSVEScaledImm(const MCInst &MI, unsigned OpIdx,
+                                      SmallVectorImpl<MCFixup> &Fixups,
+                                      const MCSubtargetInfo &STI) const {
+  const MCOperand &MO = MI.getOperand(OpIdx);
+  assert(MO.isImm() && "Expected an immediate value for the scale amount!");
+  return MO.getImm() / Scale;
 }
 
 #define ENABLE_INSTR_PREDICATE_VERIFIER

@@ -501,6 +501,8 @@ public:
 private:
   friend class LoopInfoBase<BasicBlock, Loop>;
   explicit Loop(BasicBlock *BB) : LoopBase<BasicBlock, Loop>(BB) {}
+
+  void getAttachedDebugLocations(std::vector<DebugLoc> &Locs) const;
 };
 
 //===----------------------------------------------------------------------===//

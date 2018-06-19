@@ -80,6 +80,9 @@ public:
   unsigned getNumberOfRegisters(bool Vector) const;
   unsigned getRegisterBitWidth(bool Vector) const ;
   unsigned getMinVectorRegisterBitWidth() const;
+  unsigned getRegisterBitWidthUpperBound(bool Vector) {
+    return getRegisterBitWidth(Vector);
+  }
   unsigned getLoadStoreVecRegBitWidth(unsigned AddrSpace) const;
 
   bool isLegalToVectorizeMemChain(unsigned ChainSizeInBytes,

@@ -339,13 +339,25 @@ class DISubrange : public DINode {
              int64_t LowerBound)
       : DINode(C, DISubrangeKind, Storage, dwarf::DW_TAG_subrange_type, None),
         Count(Count), LowerBound(LowerBound) {}
+
+  DISubrange(LLVMContext &C, StorageType Storage, Metadata *CountNode,
+             int64_t LowerBound, ArrayRef<Metadata *> Ops)
+      : DINode(C, DISubrangeKind, Storage, dwarf::DW_TAG_subrange_type, Ops),
+        Count(-1), LowerBound(LowerBound) {}
+
   ~DISubrange() = default;
 
   static DISubrange *getImpl(LLVMContext &Context, int64_t Count,
                              int64_t LowerBound, StorageType Storage,
                              bool ShouldCreate = true);
 
+  static DISubrange *getImpl(LLVMContext &Context, Metadata *CountNode,
+                             int64_t LowerBound, StorageType Storage,
+                             bool ShouldCreate = true);
+
   TempDISubrange cloneImpl() const {
+    if (getRawCountNode())
+      return getTemporary(getContext(), getRawCountNode(), getLowerBound());
     return getTemporary(getContext(), getCount(), getLowerBound());
   }
 
@@ -353,10 +365,25 @@ public:
   DEFINE_MDNODE_GET(DISubrange, (int64_t Count, int64_t LowerBound = 0),
                     (Count, LowerBound))
 
+  DEFINE_MDNODE_GET(DISubrange, (Metadata *CountNode, int64_t LowerBound = 0),
+                    (CountNode, LowerBound))
+
   TempDISubrange clone() const { return cloneImpl(); }
 
   int64_t getLowerBound() const { return LowerBound; }
   int64_t getCount() const { return Count; }
+
+  Metadata *getRawCountNode() const {
+    return getNumOperands() ? getOperand(0).get() : nullptr;
+  }
+
+  DIVariable *getCountNode() const {
+    return dyn_cast_or_null<DIVariable>(getRawCountNode());
+  }
+
+  DIExpression *getCountExpression() const {
+    return dyn_cast_or_null<DIExpression>(getRawCountNode());
+  }
 
   static bool classof(const Metadata *MD) {
     return MD->getMetadataID() == DISubrangeKind;
@@ -683,6 +710,12 @@ class DIBasicType : public DIType {
 public:
   DEFINE_MDNODE_GET(DIBasicType, (unsigned Tag, StringRef Name),
                     (Tag, Name, 0, 0, 0))
+  DEFINE_MDNODE_GET(DIBasicType,
+                    (unsigned Tag, StringRef Name, uint64_t SizeInBits),
+                    (Tag, Name, SizeInBits, 0, 0))
+  DEFINE_MDNODE_GET(DIBasicType,
+                    (unsigned Tag, MDString *Name, uint64_t SizeInBits),
+                    (Tag, Name, SizeInBits, 0, 0))
   DEFINE_MDNODE_GET(DIBasicType,
                     (unsigned Tag, StringRef Name, uint64_t SizeInBits,
                      uint32_t AlignInBits, unsigned Encoding),
@@ -1601,6 +1634,9 @@ public:
   bool isExplicit() const { return getFlags() & FlagExplicit; }
   bool isPrototyped() const { return getFlags() & FlagPrototyped; }
   bool isMainSubprogram() const { return getFlags() & FlagMainSubprogram; }
+  bool isPure() const { return getFlags() & FlagPure; }
+  bool isElemental() const { return getFlags() & FlagElemental; }
+  bool isRecursive() const { return getFlags() & FlagRecursive; }
 
   /// Check if this is reference-qualified.
   ///
@@ -1910,41 +1946,51 @@ public:
 class DIModule : public DIScope {
   friend class LLVMContextImpl;
   friend class MDNode;
+  unsigned Line;
 
-  DIModule(LLVMContext &Context, StorageType Storage, ArrayRef<Metadata *> Ops)
-      : DIScope(Context, DIModuleKind, Storage, dwarf::DW_TAG_module, Ops) {}
+  DIModule(LLVMContext &Context, StorageType Storage, unsigned Line,
+           ArrayRef<Metadata *> Ops)
+      : DIScope(Context, DIModuleKind, Storage, dwarf::DW_TAG_module, Ops),
+        Line(Line) {}
   ~DIModule() = default;
 
   static DIModule *getImpl(LLVMContext &Context, DIScope *Scope,
                            StringRef Name, StringRef ConfigurationMacros,
                            StringRef IncludePath, StringRef ISysRoot,
+                           DIFile *File, unsigned Line,
                            StorageType Storage, bool ShouldCreate = true) {
     return getImpl(Context, Scope, getCanonicalMDString(Context, Name),
                    getCanonicalMDString(Context, ConfigurationMacros),
                    getCanonicalMDString(Context, IncludePath),
                    getCanonicalMDString(Context, ISysRoot),
+                   static_cast<Metadata *>(File), Line,
                    Storage, ShouldCreate);
   }
   static DIModule *getImpl(LLVMContext &Context, Metadata *Scope,
                            MDString *Name, MDString *ConfigurationMacros,
                            MDString *IncludePath, MDString *ISysRoot,
+                           Metadata *File, unsigned Line,
                            StorageType Storage, bool ShouldCreate = true);
 
   TempDIModule cloneImpl() const {
     return getTemporary(getContext(), getScope(), getName(),
                         getConfigurationMacros(), getIncludePath(),
-                        getISysRoot());
+                        getISysRoot(), getFile(), getLine());
   }
 
 public:
   DEFINE_MDNODE_GET(DIModule, (DIScope *Scope, StringRef Name,
-                               StringRef ConfigurationMacros, StringRef IncludePath,
-                               StringRef ISysRoot),
-                    (Scope, Name, ConfigurationMacros, IncludePath, ISysRoot))
+                               StringRef ConfigurationMacros,
+                               StringRef IncludePath, StringRef ISysRoot,
+                               DIFile *File, unsigned Line),
+                    (Scope, Name, ConfigurationMacros, IncludePath, ISysRoot,
+                     File, Line))
   DEFINE_MDNODE_GET(DIModule,
                     (Metadata *Scope, MDString *Name, MDString *ConfigurationMacros,
-                     MDString *IncludePath, MDString *ISysRoot),
-                    (Scope, Name, ConfigurationMacros, IncludePath, ISysRoot))
+                     MDString *IncludePath, MDString *ISysRoot,
+                     Metadata *File, unsigned Line),
+                    (Scope, Name, ConfigurationMacros, IncludePath, ISysRoot,
+                     File, Line))
 
   TempDIModule clone() const { return cloneImpl(); }
 
@@ -1953,12 +1999,15 @@ public:
   StringRef getConfigurationMacros() const { return getStringOperand(2); }
   StringRef getIncludePath() const { return getStringOperand(3); }
   StringRef getISysRoot() const { return getStringOperand(4); }
+  unsigned getLine() const { return Line; }
+  DIFile *getFile() const { return cast_or_null<DIFile>(getRawFile()); }
 
   Metadata *getRawScope() const { return getOperand(0); }
   MDString *getRawName() const { return getOperandAs<MDString>(1); }
   MDString *getRawConfigurationMacros() const { return getOperandAs<MDString>(2); }
   MDString *getRawIncludePath() const { return getOperandAs<MDString>(3); }
   MDString *getRawISysRoot() const { return getOperandAs<MDString>(4); }
+  Metadata *getRawFile() const { return getOperand(5); }
 
   static bool classof(const Metadata *MD) {
     return MD->getMetadataID() == DIModuleKind;
@@ -2293,6 +2342,18 @@ public:
   /// into a stack value.
   static DIExpression *prepend(const DIExpression *DIExpr, bool Deref,
                                int64_t Offset = 0, bool StackValue = false);
+
+  /// Create a DIExpression to describe one part of an aggregate variable that
+  /// is fragmented across multiple Values. The DW_OP_LLVM_fragment operation
+  /// will be appended to the elements of \c Expr. If \c Expr already contains
+  /// a \c DW_OP_LLVM_fragment \c OffsetInBits is interpreted as an offset
+  /// into the existing fragment.
+  ///
+  /// \param OffsetInBits Offset of the piece in bits.
+  /// \param SizeInBits   Size of the piece in bits.
+  static DIExpression *createFragmentExpression(const DIExpression *Exp,
+                                                unsigned OffsetInBits,
+                                                unsigned SizeInBits);
 };
 
 /// Global variables.

@@ -22,9 +22,11 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
+#include "llvm/IR/PatternMatch.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
 using namespace llvm;
+using namespace llvm::PatternMatch;
 
 #define DEBUG_TYPE "instcombine"
 
@@ -599,6 +601,7 @@ static Instruction *combineLoadToOperationType(InstCombiner &IC, LoadInst &LI) {
   // is sized and has a size exactly the same as its store size and the store
   // size is a legal integer type.
   if (!Ty->isIntegerTy() && Ty->isSized() &&
+      DL.isTypeStoreSizeKnown(Ty) &&
       DL.isLegalInteger(DL.getTypeStoreSizeInBits(Ty)) &&
       DL.getTypeStoreSizeInBits(Ty) == DL.getTypeSizeInBits(Ty) &&
       !DL.isNonIntegralPointerType(Ty)) {
@@ -1298,6 +1301,72 @@ static bool equivalentAddressValues(Value *A, Value *B) {
   return false;
 }
 
+bool InstCombiner::clearRedundantStore(Instruction *SI) {
+  Value *StrPtr = nullptr, *StrMask = nullptr, *StrVal = nullptr;
+  if (!match(SI, m_AnyStore(m_Value(StrVal), m_Value(StrPtr), m_Value(),
+                            m_Value(StrMask))))
+    return false;
+
+  bool isAllOnesMask = false;
+  if (auto *MC = dyn_cast<Constant>(StrMask))
+    isAllOnesMask = MC->isAllOnesValue();
+
+  BasicBlock::iterator BBI(SI);
+  for (unsigned ScanInsts = DefMaxInstsToScan;
+       BBI != SI->getParent()->begin() && ScanInsts; --ScanInsts) {
+    --BBI;
+    // Don't count debug info directives, lest they affect codegen,
+    // and we skip pointer-to-pointer bitcasts, which are NOPs.
+    if (isa<DbgInfoIntrinsic>(BBI) ||
+        (isa<BitCastInst>(BBI) && BBI->getType()->isPointerTy())) {
+      ScanInsts++;
+      continue;
+    }
+
+    if (Instruction *Inst = dyn_cast<Instruction>(BBI)) {
+      Value *InstVal = nullptr, *InstMask = nullptr, *InstPtr = nullptr,
+            *InstPass = nullptr;
+      if (match(Inst, m_AnyStore(m_Value(InstVal), m_Value(InstPtr), m_Value(),
+                                 m_Value(InstMask)))) {
+        // Prev store isn't volatile, and stores to the same location?
+        if (equivalentAddressValues(InstPtr, StrPtr) &&
+            (InstMask == StrMask || isAllOnesMask) &&
+            (!isa<StoreInst>(Inst) || cast<StoreInst>(Inst)->isUnordered())) {
+          ++BBI;
+          this->eraseInstFromFunction(*Inst);
+          continue;
+        }
+        break;
+      }
+
+      // If this is a load, we have to stop.  However, if the loaded value is
+      // from the pointer we're loading and is producing the pointer we're
+      // storing, then *this* store is dead (X = load P; store X -> P).
+      if (match(Inst, m_AnyLoad(m_Value(InstPtr), m_Value(), m_Value(InstMask),
+                                m_Value(InstPass)))) {
+        if (Inst == StrVal && equivalentAddressValues(StrPtr, InstPtr) &&
+            isa<UndefValue>(InstPass) && StrMask == InstMask) {
+          if (StoreInst *StoreInstruction = dyn_cast<StoreInst>(SI))
+            assert(StoreInstruction->isUnordered() &&
+                   "can't eliminate ordering operation");
+          ++NumDeadStore;
+          this->eraseInstFromFunction(*SI);
+          return true;
+        }
+
+        // Otherwise, this is a load from some other location.  Stores before it
+        // may not be dead.
+        break;
+      }
+    }
+
+    // Don't skip over loads, throws or things that can modify memory.
+    if (BBI->mayWriteToMemory() || BBI->mayReadFromMemory() || BBI->mayThrow())
+      break;
+  }
+  return false;
+}
+
 Instruction *InstCombiner::visitStoreInst(StoreInst &SI) {
   Value *Val = SI.getOperand(0);
   Value *Ptr = SI.getOperand(1);
@@ -1345,51 +1414,8 @@ Instruction *InstCombiner::visitStoreInst(StoreInst &SI) {
     }
   }
 
-  // Do really simple DSE, to catch cases where there are several consecutive
-  // stores to the same location, separated by a few arithmetic operations. This
-  // situation often occurs with bitfield accesses.
-  BasicBlock::iterator BBI(SI);
-  for (unsigned ScanInsts = 6; BBI != SI.getParent()->begin() && ScanInsts;
-       --ScanInsts) {
-    --BBI;
-    // Don't count debug info directives, lest they affect codegen,
-    // and we skip pointer-to-pointer bitcasts, which are NOPs.
-    if (isa<DbgInfoIntrinsic>(BBI) ||
-        (isa<BitCastInst>(BBI) && BBI->getType()->isPointerTy())) {
-      ScanInsts++;
-      continue;
-    }
-
-    if (StoreInst *PrevSI = dyn_cast<StoreInst>(BBI)) {
-      // Prev store isn't volatile, and stores to the same location?
-      if (PrevSI->isUnordered() && equivalentAddressValues(PrevSI->getOperand(1),
-                                                        SI.getOperand(1))) {
-        ++NumDeadStore;
-        ++BBI;
-        eraseInstFromFunction(*PrevSI);
-        continue;
-      }
-      break;
-    }
-
-    // If this is a load, we have to stop.  However, if the loaded value is from
-    // the pointer we're loading and is producing the pointer we're storing,
-    // then *this* store is dead (X = load P; store X -> P).
-    if (LoadInst *LI = dyn_cast<LoadInst>(BBI)) {
-      if (LI == Val && equivalentAddressValues(LI->getOperand(0), Ptr)) {
-        assert(SI.isUnordered() && "can't eliminate ordering operation");
-        return eraseInstFromFunction(SI);
-      }
-
-      // Otherwise, this is a load from some other location.  Stores before it
-      // may not be dead.
-      break;
-    }
-
-    // Don't skip over loads, throws or things that can modify memory.
-    if (BBI->mayWriteToMemory() || BBI->mayReadFromMemory() || BBI->mayThrow())
-      break;
-  }
+  if (clearRedundantStore(dyn_cast<Instruction>(&SI)))
+    return nullptr;
 
   // store X, null    -> turns into 'unreachable' in SimplifyCFG
   if (isa<ConstantPointerNull>(Ptr) && SI.getPointerAddressSpace() == 0) {
@@ -1408,7 +1434,7 @@ Instruction *InstCombiner::visitStoreInst(StoreInst &SI) {
   // If this store is the last instruction in the basic block (possibly
   // excepting debug info instructions), and if the block ends with an
   // unconditional branch, try to move it to the successor block.
-  BBI = SI.getIterator();
+  BasicBlock::iterator BBI = SI.getIterator();
   do {
     ++BBI;
   } while (isa<DbgInfoIntrinsic>(BBI) ||

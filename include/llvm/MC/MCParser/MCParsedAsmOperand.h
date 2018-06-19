@@ -58,6 +58,8 @@ public:
   virtual bool isImm() const = 0;
   /// isReg - Is this a register operand?
   virtual bool isReg() const = 0;
+  // isAnyReg() - Is this any kind of register operand?
+  virtual bool isAnyReg() const { return isReg(); }
   virtual unsigned getReg() const = 0;
 
   /// isMem - Is this a memory operand?

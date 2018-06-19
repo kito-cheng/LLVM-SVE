@@ -834,6 +834,7 @@ void ModuleBitcodeWriter::writeTypeTable() {
       VectorType *VT = cast<VectorType>(T);
       // VECTOR [numelts, eltty]
       Code = bitc::TYPE_CODE_VECTOR;
+      TypeVals.push_back(VT->isScalable());
       TypeVals.push_back(VT->getNumElements());
       TypeVals.push_back(VE.getTypeID(VT->getElementType()));
       break;
@@ -1354,6 +1355,7 @@ void ModuleBitcodeWriter::writeDISubrange(const DISubrange *N,
                                           SmallVectorImpl<uint64_t> &Record,
                                           unsigned Abbrev) {
   Record.push_back(N->isDistinct());
+  Record.push_back(VE.getMetadataOrNullID(N->getRawCountNode()));
   Record.push_back(N->getCount());
   Record.push_back(rotateSign(N->getLowerBound()));
 
@@ -1587,8 +1589,13 @@ void ModuleBitcodeWriter::writeDIModule(const DIModule *N,
                                         SmallVectorImpl<uint64_t> &Record,
                                         unsigned Abbrev) {
   Record.push_back(N->isDistinct());
-  for (auto &I : N->operands())
-    Record.push_back(VE.getMetadataOrNullID(I));
+  Record.push_back(VE.getMetadataOrNullID(N->getRawScope()));
+  Record.push_back(VE.getMetadataOrNullID(N->getRawName()));
+  Record.push_back(VE.getMetadataOrNullID(N->getRawConfigurationMacros()));
+  Record.push_back(VE.getMetadataOrNullID(N->getRawIncludePath()));
+  Record.push_back(VE.getMetadataOrNullID(N->getRawISysRoot()));
+  Record.push_back(VE.getMetadataOrNullID(N->getRawFile()));
+  Record.push_back(N->getLine());
 
   Stream.EmitRecord(bitc::METADATA_MODULE, Record, Abbrev);
   Record.clear();
@@ -2142,8 +2149,12 @@ void ModuleBitcodeWriter::writeConstants(unsigned FirstVal, unsigned LastVal,
     unsigned AbbrevToUse = 0;
     if (C->isNullValue()) {
       Code = bitc::CST_CODE_NULL;
+    } else if (isa<StepVector>(C)) {
+      Code = bitc::CST_CODE_STEPVEC;
     } else if (isa<UndefValue>(C)) {
       Code = bitc::CST_CODE_UNDEF;
+    } else if (isa<VScale>(C)) {
+      Code = bitc::CST_CODE_VSCALE;
     } else if (const ConstantInt *IV = dyn_cast<ConstantInt>(C)) {
       if (IV->getBitWidth() <= 64) {
         uint64_t V = IV->getSExtValue();

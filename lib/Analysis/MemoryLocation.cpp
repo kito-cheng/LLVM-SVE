@@ -37,6 +37,18 @@ MemoryLocation MemoryLocation::get(const StoreInst *SI) {
                         AATags);
 }
 
+MemoryLocation MemoryLocation::get(const MemSetInst *MSI) {
+  AAMDNodes AATags;
+  MSI->getAAMetadata(AATags);
+  const auto &DL = MSI->getModule()->getDataLayout();
+  auto Length = MSI->getLength();
+  uint64_t Size = UnknownSize;
+  if (auto CI = dyn_cast<ConstantInt>(Length))
+    Size = CI->getZExtValue() * DL.getTypeStoreSize(MSI->getValue()->getType());
+
+  return MemoryLocation(MSI->getRawDest(), Size, AATags);
+}
+
 MemoryLocation MemoryLocation::get(const VAArgInst *VI) {
   AAMDNodes AATags;
   VI->getAAMetadata(AATags);
@@ -103,6 +115,17 @@ MemoryLocation MemoryLocation::getForArgument(ImmutableCallSite CS,
 
     switch (II->getIntrinsicID()) {
     default:
+      break;
+    // TODO: Improve for fixed width, max reg size, fixed stride, etc.
+    // Safe to fall through to UnknownSize for now.
+    case Intrinsic::masked_load:
+    case Intrinsic::masked_spec_load:
+    case Intrinsic::masked_gather:
+      break;
+    // TODO: Improve for fixed width, max reg size, fixed stride, etc.
+    // Safe to fall through to UnknownSize for now.
+    case Intrinsic::masked_store:
+    case Intrinsic::masked_scatter:
       break;
     case Intrinsic::memset:
     case Intrinsic::memcpy:

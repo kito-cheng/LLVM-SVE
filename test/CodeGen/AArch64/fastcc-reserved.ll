@@ -1,4 +1,4 @@
-; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64-none-linux-gnu -tailcallopt | FileCheck %s
+; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64-none-linux-gnu -tailcallopt -aarch64-sve-postvec=false | FileCheck %s
 
 ; This test is designed to be run in the situation where the
 ; call-frame is not reserved (hence disable-fp-elim), but where

@@ -24,6 +24,8 @@ def HasNEON          : Predicate<"Subtarget->hasNEON()">,
                                  AssemblerPredicate<"FeatureNEON", "neon">;
 def HasCrypto        : Predicate<"Subtarget->hasCrypto()">,
                                  AssemblerPredicate<"FeatureCrypto", "crypto">;
+def HasDotProd       : Predicate<"Subtarget->hasDotProd()">,
+                                 AssemblerPredicate<"FeatureDotProd", "dotprod">;
 def HasCRC           : Predicate<"Subtarget->hasCRC()">,
                                  AssemblerPredicate<"FeatureCRC", "crc">;
 def HasLSE           : Predicate<"Subtarget->hasLSE()">,
@@ -155,6 +157,247 @@ def SDT_AArch64WrapperLarge : SDTypeProfile<1, 4,
                                          SDTCisSameAs<1, 2>, SDTCisSameAs<1, 3>,
                                          SDTCisSameAs<1, 4>]>;
 
+def SDT_AArch64TBL : SDTypeProfile<1, 2, [
+  SDTCisVec<0>, SDTCisSameAs<0, 1>, SDTCisInt<2>
+]>;
+
+// TODO: these are patterns that everybody could benefit from but sadly they
+// cannot live in TargetSelectionDAG.td because compilation fails when targets
+// without vector registers are enabled.
+
+// non-extending masked load fragment.
+def nonext_masked_load :
+  PatFrag<(ops node:$ptr, node:$pred, node:$def),
+          (masked_load node:$ptr, node:$pred, node:$def), [{
+  return cast<MaskedLoadSDNode>(N)->getExtensionType() == ISD::NON_EXTLOAD;
+}]>;
+
+// sign extending masked load fragments.
+def sext_masked_load :
+  PatFrag<(ops node:$ptr, node:$pred, node:$def),
+          (masked_load node:$ptr, node:$pred, node:$def),[{
+  return cast<MaskedLoadSDNode>(N)->getExtensionType() == ISD::SEXTLOAD;
+}]>;
+def sext_masked_load_i8 :
+  PatFrag<(ops node:$ptr, node:$pred, node:$def),
+          (sext_masked_load node:$ptr, node:$pred, node:$def), [{
+  return cast<MaskedLoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i8;
+}]>;
+def sext_masked_load_i16 :
+  PatFrag<(ops node:$ptr, node:$pred, node:$def),
+          (sext_masked_load node:$ptr, node:$pred, node:$def), [{
+  return cast<MaskedLoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i16;
+}]>;
+def sext_masked_load_i32 :
+  PatFrag<(ops node:$ptr, node:$pred, node:$def),
+          (sext_masked_load node:$ptr, node:$pred, node:$def), [{
+  return cast<MaskedLoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;
+}]>;
+
+// zero extending masked load fragments.
+def zext_masked_load :
+  PatFrag<(ops node:$ptr, node:$pred, node:$def),
+          (masked_load node:$ptr, node:$pred, node:$def), [{
+  return cast<MaskedLoadSDNode>(N)->getExtensionType() == ISD::ZEXTLOAD;
+}]>;
+def zext_masked_load_i8 :
+  PatFrag<(ops node:$ptr, node:$pred, node:$def),
+          (zext_masked_load node:$ptr, node:$pred, node:$def), [{
+  return cast<MaskedLoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i8;
+}]>;
+def zext_masked_load_i16 :
+  PatFrag<(ops node:$ptr, node:$pred, node:$def),
+          (zext_masked_load node:$ptr, node:$pred, node:$def), [{
+  return cast<MaskedLoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i16;
+}]>;
+def zext_masked_load_i32 :
+  PatFrag<(ops node:$ptr, node:$pred, node:$def),
+          (zext_masked_load node:$ptr, node:$pred, node:$def), [{
+  return cast<MaskedLoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;
+}]>;
+
+// non-truncating masked store fragment.
+def nontrunc_masked_store :
+  PatFrag<(ops node:$ptr, node:$pred, node:$val),
+          (masked_store node:$ptr, node:$pred, node:$val), [{
+  return !cast<MaskedStoreSDNode>(N)->isTruncatingStore();
+}]>;
+
+// truncating masked store fragments.
+def trunc_masked_store :
+  PatFrag<(ops node:$ptr, node:$pred, node:$val),
+          (masked_store node:$ptr, node:$pred, node:$val), [{
+  return cast<MaskedStoreSDNode>(N)->isTruncatingStore();
+}]>;
+def trunc_masked_store_i8 :
+  PatFrag<(ops node:$ptr, node:$pred, node:$val),
+          (trunc_masked_store node:$ptr, node:$pred, node:$val), [{
+  return cast<MaskedStoreSDNode>(N)->getMemoryVT().getScalarType() == MVT::i8;
+}]>;
+def trunc_masked_store_i16 :
+  PatFrag<(ops node:$ptr, node:$pred, node:$val),
+          (trunc_masked_store node:$ptr, node:$pred, node:$val), [{
+  return cast<MaskedStoreSDNode>(N)->getMemoryVT().getScalarType() == MVT::i16;
+}]>;
+def trunc_masked_store_i32 :
+  PatFrag<(ops node:$ptr, node:$pred, node:$val),
+          (trunc_masked_store node:$ptr, node:$pred, node:$val), [{
+  return cast<MaskedStoreSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;
+}]>;
+
+// NOTE: This is a clone of SDTMaskedGather as the "common" version looks rather
+//       target specific.
+def SDT_SVEMaskedGather : SDTypeProfile<1, 4, [       // masked gather
+  SDTCisVec<0>, SDTCisSameAs<0, 1>, SDTCisVec<2>, SDTCisPtrTy<3>, SDTCisVec<4>,
+  SDTCVecEltisVT<2, i1>, SDTCisSameNumEltsAs<0, 2>, SDTCisSameNumEltsAs<0, 4>
+]>;
+def sve_masked_gather : SDNode<"ISD::MGATHER", SDT_SVEMaskedGather,
+                               [SDNPHasChain, SDNPMayLoad, SDNPMemOperand]>;
+
+// masked gather (signed scaled offsets).
+def masked_gather_signed_scaled :
+  PatFrag<(ops node:$def, node:$pred, node:$ptr, node:$idx),
+          (sve_masked_gather node:$def, node:$pred, node:$ptr, node:$idx),[{
+  return cast<MaskedGatherSDNode>(N)->getIndexType() == ISD::SIGNED_SCALED;
+}]>;
+// masked gather (signed unscaled offsets).
+def masked_gather_signed_unscaled :
+  PatFrag<(ops node:$def, node:$pred, node:$ptr, node:$idx),
+          (sve_masked_gather node:$def, node:$pred, node:$ptr, node:$idx),[{
+  return cast<MaskedGatherSDNode>(N)->getIndexType() == ISD::SIGNED_UNSCALED;
+}]>;
+// masked gather (unsigned scaled offsets).
+def masked_gather_unsigned_scaled :
+  PatFrag<(ops node:$def, node:$pred, node:$ptr, node:$idx),
+          (sve_masked_gather node:$def, node:$pred, node:$ptr, node:$idx),[{
+  return cast<MaskedGatherSDNode>(N)->getIndexType() == ISD::UNSIGNED_SCALED;
+}]>;
+// masked gather (unsigned unscaled offsets).
+def masked_gather_unsigned_unscaled :
+  PatFrag<(ops node:$def, node:$pred, node:$ptr, node:$idx),
+          (sve_masked_gather node:$def, node:$pred, node:$ptr, node:$idx),[{
+  return cast<MaskedGatherSDNode>(N)->getIndexType() == ISD::UNSIGNED_UNSCALED;
+}]>;
+
+multiclass masked_gather<PatFrag GatherOp> {
+  def nonext_#NAME :
+    PatFrag<(ops node:$def, node:$pred, node:$ptr, node:$idx),
+            (GatherOp node:$def, node:$pred, node:$ptr, node:$idx), [{
+    return cast<MaskedGatherSDNode>(N)->getExtensionType() == ISD::NON_EXTLOAD;
+  }]>;
+
+  // Sign extending masked gather fragments.
+  def sext_#NAME#_i8 :
+    PatFrag<(ops node:$def, node:$pred, node:$ptr, node:$idx),
+            (GatherOp node:$def, node:$pred, node:$ptr, node:$idx), [{
+    return cast<MaskedGatherSDNode>(N)->getExtensionType() == ISD::SEXTLOAD &&
+           cast<MaskedGatherSDNode>(N)->getMemoryVT().getScalarType() == MVT::i8;
+  }]>;
+  def sext_#NAME#_i16 :
+    PatFrag<(ops node:$def, node:$pred, node:$ptr, node:$idx),
+            (GatherOp node:$def, node:$pred, node:$ptr, node:$idx), [{
+    return cast<MaskedGatherSDNode>(N)->getExtensionType() == ISD::SEXTLOAD &&
+           cast<MaskedGatherSDNode>(N)->getMemoryVT().getScalarType() == MVT::i16;
+  }]>;
+  def sext_#NAME#_i32 :
+    PatFrag<(ops node:$def, node:$pred, node:$ptr, node:$idx),
+            (GatherOp node:$def, node:$pred, node:$ptr, node:$idx), [{
+    return cast<MaskedGatherSDNode>(N)->getExtensionType() == ISD::SEXTLOAD &&
+           cast<MaskedGatherSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;
+  }]>;
+
+  // Zero extending masked gather fragments.
+  def zext_#NAME#_i8 :
+    PatFrag<(ops node:$def, node:$pred, node:$ptr, node:$idx),
+            (GatherOp node:$def, node:$pred, node:$ptr, node:$idx), [{
+    return cast<MaskedGatherSDNode>(N)->getExtensionType() == ISD::ZEXTLOAD &&
+           cast<MaskedGatherSDNode>(N)->getMemoryVT().getScalarType() == MVT::i8;
+  }]>;
+  def zext_#NAME#_i16 :
+    PatFrag<(ops node:$def, node:$pred, node:$ptr, node:$idx),
+            (GatherOp node:$def, node:$pred, node:$ptr, node:$idx), [{
+    return cast<MaskedGatherSDNode>(N)->getExtensionType() == ISD::ZEXTLOAD &&
+           cast<MaskedGatherSDNode>(N)->getMemoryVT().getScalarType() == MVT::i16;
+  }]>;
+  def zext_#NAME#_i32 :
+    PatFrag<(ops node:$def, node:$pred, node:$ptr, node:$idx),
+            (GatherOp node:$def, node:$pred, node:$ptr, node:$idx), [{
+    return cast<MaskedGatherSDNode>(N)->getExtensionType() == ISD::ZEXTLOAD &&
+           cast<MaskedGatherSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;
+  }]>;
+}
+
+defm masked_gather_signed_scaled     : masked_gather<masked_gather_signed_scaled>;
+defm masked_gather_signed_unscaled   : masked_gather<masked_gather_signed_unscaled>;
+defm masked_gather_unsigned_scaled   : masked_gather<masked_gather_unsigned_scaled>;
+defm masked_gather_unsigned_unscaled : masked_gather<masked_gather_unsigned_unscaled>;
+
+// NOTE: This is a clone of SDTMaskedScatter as the "common" version looks
+//       rather target specific.
+def SDT_SVEMaskedScatter : SDTypeProfile<0, 4, [       // masked scatter
+  SDTCisVec<0>, SDTCisVec<1>, SDTCisPtrTy<2>, SDTCisVec<3>,
+  SDTCVecEltisVT<1, i1>, SDTCisSameNumEltsAs<0, 1>, SDTCisSameNumEltsAs<0, 3>
+]>;
+def sve_masked_scatter : SDNode<"ISD::MSCATTER", SDT_SVEMaskedScatter,
+                                  [SDNPHasChain, SDNPMayStore, SDNPMemOperand]>;
+
+// masked scatter fragment (signed scaled offsets).
+def masked_scatter_signed_scaled :
+  PatFrag<(ops node:$val, node:$pred, node:$ptr, node:$idx),
+          (sve_masked_scatter node:$val, node:$pred, node:$ptr, node:$idx), [{
+  return cast<MaskedScatterSDNode>(N)->getIndexType() == ISD::SIGNED_SCALED;
+}]>;
+// masked scatter fragment (signed unscaled offsets).
+def masked_scatter_signed_unscaled :
+  PatFrag<(ops node:$val, node:$pred, node:$ptr, node:$idx),
+          (sve_masked_scatter node:$val, node:$pred, node:$ptr, node:$idx), [{
+  return cast<MaskedScatterSDNode>(N)->getIndexType() == ISD::SIGNED_UNSCALED;
+}]>;
+// masked scatter fragment (unsigned scaled offsets).
+def masked_scatter_unsigned_scaled :
+  PatFrag<(ops node:$val, node:$pred, node:$ptr, node:$idx),
+          (sve_masked_scatter node:$val, node:$pred, node:$ptr, node:$idx), [{
+  return cast<MaskedScatterSDNode>(N)->getIndexType() == ISD::UNSIGNED_SCALED;
+}]>;
+// masked scatter fragment (unsigned unscaled offsets).
+def masked_scatter_unsigned_unscaled :
+  PatFrag<(ops node:$val, node:$pred, node:$ptr, node:$idx),
+          (sve_masked_scatter node:$val, node:$pred, node:$ptr, node:$idx), [{
+  return cast<MaskedScatterSDNode>(N)->getIndexType() == ISD::UNSIGNED_UNSCALED;
+}]>;
+
+multiclass masked_scatter<PatFrag ScatterOp> {
+  def nontrunc_#NAME :
+    PatFrag<(ops node:$val, node:$pred, node:$ptr, node:$idx),
+            (ScatterOp node:$val, node:$pred, node:$ptr, node:$idx), [{
+    return !cast<MaskedScatterSDNode>(N)->isTruncatingStore();
+  }]>;
+
+  // Truncating masked scatter fragments.
+  def trunc_#NAME#_i8 :
+    PatFrag<(ops node:$val, node:$pred, node:$ptr, node:$idx),
+            (ScatterOp node:$val, node:$pred, node:$ptr, node:$idx), [{
+    return cast<MaskedScatterSDNode>(N)->isTruncatingStore() &&
+           cast<MaskedScatterSDNode>(N)->getMemoryVT().getScalarType() == MVT::i8;
+  }]>;
+  def trunc_#NAME#_i16 :
+    PatFrag<(ops node:$val, node:$pred, node:$ptr, node:$idx),
+            (ScatterOp node:$val, node:$pred, node:$ptr, node:$idx), [{
+    return cast<MaskedScatterSDNode>(N)->isTruncatingStore() &&
+           cast<MaskedScatterSDNode>(N)->getMemoryVT().getScalarType() == MVT::i16;
+  }]>;
+  def trunc_#NAME#_i32 :
+    PatFrag<(ops node:$val, node:$pred, node:$ptr, node:$idx),
+            (ScatterOp node:$val, node:$pred, node:$ptr, node:$idx), [{
+    return cast<MaskedScatterSDNode>(N)->isTruncatingStore() &&
+           cast<MaskedScatterSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;
+  }]>;
+}
+
+defm masked_scatter_signed_scaled     : masked_scatter<masked_scatter_signed_scaled>;
+defm masked_scatter_signed_unscaled   : masked_scatter<masked_scatter_signed_unscaled>;
+defm masked_scatter_unsigned_scaled   : masked_scatter<masked_scatter_unsigned_scaled>;
+defm masked_scatter_unsigned_unscaled : masked_scatter<masked_scatter_unsigned_unscaled>;
 
 // Node definitions.
 def AArch64adrp          : SDNode<"AArch64ISD::ADRP", SDTIntUnaryOp, []>;
@@ -313,6 +556,16 @@ def AArch64uminv    : SDNode<"AArch64ISD::UMINV", SDT_AArch64UnaryVec>;
 def AArch64smaxv    : SDNode<"AArch64ISD::SMAXV", SDT_AArch64UnaryVec>;
 def AArch64umaxv    : SDNode<"AArch64ISD::UMAXV", SDT_AArch64UnaryVec>;
 
+def AArch64TBL : SDNode<"AArch64ISD::TBL", SDT_AArch64TBL>;
+
+def SDT_AArch64unpk : SDTypeProfile<1, 1, [
+    SDTCisInt<0>, SDTCisInt<1>, SDTCisOpSmallerThanOp<1, 0>
+]>;
+def AArch64sunpkhi : SDNode<"AArch64ISD::SUNPKHI", SDT_AArch64unpk>;
+def AArch64sunpklo : SDNode<"AArch64ISD::SUNPKLO", SDT_AArch64unpk>;
+def AArch64uunpkhi : SDNode<"AArch64ISD::UUNPKHI", SDT_AArch64unpk>;
+def AArch64uunpklo : SDNode<"AArch64ISD::UUNPKLO", SDT_AArch64unpk>;
+
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
@@ -432,6 +685,18 @@ def ISB   : CRmSystemI<barrier_op, 0b110, "isb",
                        [(int_aarch64_isb (i32 imm32_0_15:$CRm))]>;
 }
 
+// v8.4 Dot Product
+let Predicates = [HasDotProd] in {
+def UDOT2S    : BaseSIMDThreeSameVectorDot<0, 1, "udot", ".2s", ".8b">;
+def SDOT2S    : BaseSIMDThreeSameVectorDot<0, 0, "sdot", ".2s", ".8b">;
+def UDOT4S    : BaseSIMDThreeSameVectorDot<1, 1, "udot", ".4s", ".16b">;
+def SDOT4S    : BaseSIMDThreeSameVectorDot<1, 0, "sdot", ".4s", ".16b">;
+def UDOTIDX2S : BaseSIMDThreeSameVectorDotIndex<0, 1, "udot", ".2s", ".8b", ".4b">;
+def SDOTIDX2S : BaseSIMDThreeSameVectorDotIndex<0, 0, "sdot", ".2s", ".8b", ".4b">;
+def UDOTIDX4S : BaseSIMDThreeSameVectorDotIndex<1, 1, "udot", ".4s", ".16b", ".4b">;
+def SDOTIDX4S : BaseSIMDThreeSameVectorDotIndex<1, 0, "sdot", ".4s", ".16b", ".4b">;
+}
+
 def : InstAlias<"clrex", (CLREX 0xf)>;
 def : InstAlias<"isb", (ISB 0xf)>;
 
@@ -468,12 +733,12 @@ let PostEncoderMethod = "fixMOVZ" in
 defm MOVZ : MoveImmediate<0b10, "movz">;
 
 // First group of aliases covers an implicit "lsl #0".
-def : InstAlias<"movk $dst, $imm", (MOVKWi GPR32:$dst, imm0_65535:$imm, 0)>;
-def : InstAlias<"movk $dst, $imm", (MOVKXi GPR64:$dst, imm0_65535:$imm, 0)>;
-def : InstAlias<"movn $dst, $imm", (MOVNWi GPR32:$dst, imm0_65535:$imm, 0)>;
-def : InstAlias<"movn $dst, $imm", (MOVNXi GPR64:$dst, imm0_65535:$imm, 0)>;
-def : InstAlias<"movz $dst, $imm", (MOVZWi GPR32:$dst, imm0_65535:$imm, 0)>;
-def : InstAlias<"movz $dst, $imm", (MOVZXi GPR64:$dst, imm0_65535:$imm, 0)>;
+def : InstAlias<"movk $dst, $imm", (MOVKWi GPR32:$dst, imm0_65535dec:$imm, 0)>;
+def : InstAlias<"movk $dst, $imm", (MOVKXi GPR64:$dst, imm0_65535dec:$imm, 0)>;
+def : InstAlias<"movn $dst, $imm", (MOVNWi GPR32:$dst, imm0_65535dec:$imm, 0)>;
+def : InstAlias<"movn $dst, $imm", (MOVNXi GPR64:$dst, imm0_65535dec:$imm, 0)>;
+def : InstAlias<"movz $dst, $imm", (MOVZWi GPR32:$dst, imm0_65535dec:$imm, 0)>;
+def : InstAlias<"movz $dst, $imm", (MOVZXi GPR64:$dst, imm0_65535dec:$imm, 0)>;
 
 // Next, we have various ELF relocations with the ":XYZ_g0:sym" syntax.
 def : InstAlias<"movz $Rd, $sym", (MOVZXi GPR64:$Rd, movz_symbol_g3:$sym, 48)>;
@@ -486,10 +751,10 @@ def : InstAlias<"movn $Rd, $sym", (MOVNXi GPR64:$Rd, movz_symbol_g2:$sym, 32)>;
 def : InstAlias<"movn $Rd, $sym", (MOVNXi GPR64:$Rd, movz_symbol_g1:$sym, 16)>;
 def : InstAlias<"movn $Rd, $sym", (MOVNXi GPR64:$Rd, movz_symbol_g0:$sym, 0)>;
 
-def : InstAlias<"movk $Rd, $sym", (MOVKXi GPR64:$Rd, movk_symbol_g3:$sym, 48)>;
-def : InstAlias<"movk $Rd, $sym", (MOVKXi GPR64:$Rd, movk_symbol_g2:$sym, 32)>;
-def : InstAlias<"movk $Rd, $sym", (MOVKXi GPR64:$Rd, movk_symbol_g1:$sym, 16)>;
-def : InstAlias<"movk $Rd, $sym", (MOVKXi GPR64:$Rd, movk_symbol_g0:$sym, 0)>;
+def : InstAlias<"movk $Rd, $sym", (MOVKXi GPR64:$Rd, movk_symbol_g3:$sym, 48), 0>;
+def : InstAlias<"movk $Rd, $sym", (MOVKXi GPR64:$Rd, movk_symbol_g2:$sym, 32), 0>;
+def : InstAlias<"movk $Rd, $sym", (MOVKXi GPR64:$Rd, movk_symbol_g1:$sym, 16), 0>;
+def : InstAlias<"movk $Rd, $sym", (MOVKXi GPR64:$Rd, movk_symbol_g0:$sym, 0), 0>;
 
 def : InstAlias<"movz $Rd, $sym", (MOVZWi GPR32:$Rd, movz_symbol_g1:$sym, 16)>;
 def : InstAlias<"movz $Rd, $sym", (MOVZWi GPR32:$Rd, movz_symbol_g0:$sym, 0)>;
@@ -497,8 +762,8 @@ def : InstAlias<"movz $Rd, $sym", (MOVZWi GPR32:$Rd, movz_symbol_g0:$sym, 0)>;
 def : InstAlias<"movn $Rd, $sym", (MOVNWi GPR32:$Rd, movz_symbol_g1:$sym, 16)>;
 def : InstAlias<"movn $Rd, $sym", (MOVNWi GPR32:$Rd, movz_symbol_g0:$sym, 0)>;
 
-def : InstAlias<"movk $Rd, $sym", (MOVKWi GPR32:$Rd, movk_symbol_g1:$sym, 16)>;
-def : InstAlias<"movk $Rd, $sym", (MOVKWi GPR32:$Rd, movk_symbol_g0:$sym, 0)>;
+def : InstAlias<"movk $Rd, $sym", (MOVKWi GPR32:$Rd, movk_symbol_g1:$sym, 16), 0>;
+def : InstAlias<"movk $Rd, $sym", (MOVKWi GPR32:$Rd, movk_symbol_g0:$sym, 0), 0>;
 
 // Final group of aliases covers true "mov $Rd, $imm" cases.
 multiclass movw_mov_alias<string basename,Instruction INST, RegisterClass GPR,
@@ -582,6 +847,8 @@ return CurDAG->getTargetConstant(
 }]>;
 
 
+def : Pat<(f16 fpimm:$in),
+  (EXTRACT_SUBREG (f32 (COPY_TO_REGCLASS (MOVi32imm (bitcast_fpimm_to_i32 f16:$in)), FPR32)), hsub)>;
 def : Pat<(f32 fpimm:$in),
   (COPY_TO_REGCLASS (MOVi32imm (bitcast_fpimm_to_i32 f32:$in)), FPR32)>;
 def : Pat<(f64 fpimm:$in),
@@ -1258,7 +1525,20 @@ def TLSDESCCALL : Pseudo<(outs), (ins i64imm:$sym), []>, Sched<[]> {
 
 // FIXME: maybe the scratch register used shouldn't be fixed to X1?
 // FIXME: can "hasSideEffects be dropped?
-let isCall = 1, Defs = [LR, X0, X1], hasSideEffects = 1,
+let isCall = 1, Defs = [LR, X0, X1,
+                        P0, P1, P2, P3,
+                        P4, P5, P6, P7,
+                        P8, P9, P10, P11,
+                        P12, P13, P14, P15,
+                        Z0_HI, Z1_HI, Z2_HI, Z3_HI,
+                        Z4_HI, Z5_HI, Z6_HI, Z7_HI,
+                        Z8_HI, Z9_HI, Z10_HI, Z11_HI,
+                        Z12_HI, Z13_HI, Z14_HI, Z15_HI,
+                        Z16_HI, Z17_HI, Z18_HI, Z19_HI,
+                        Z20_HI, Z21_HI, Z22_HI, Z23_HI,
+                        Z24_HI, Z25_HI, Z26_HI, Z27_HI,
+                        Z28_HI, Z29_HI, Z30_HI, Z31_HI],
+    hasSideEffects = 1,
     isCodeGenOnly = 1 in
 def TLSDESC_CALLSEQ
     : Pseudo<(outs), (ins i64imm:$sym),
@@ -2590,6 +2870,8 @@ defm FMOV : UnscaledConversion<"fmov">;
 
 // Add pseudo ops for FMOV 0 so we can mark them as isReMaterializable
 let isReMaterializable = 1, isCodeGenOnly = 1, isAsCheapAsAMove = 1 in {
+def FMOVH0 : Pseudo<(outs FPR16:$Rd), (ins), [(set f16:$Rd, (fpimm0))]>,
+    Sched<[WriteF]>;
 def FMOVS0 : Pseudo<(outs FPR32:$Rd), (ins), [(set f32:$Rd, (fpimm0))]>,
     Sched<[WriteF]>;
 def FMOVD0 : Pseudo<(outs FPR64:$Rd), (ins), [(set f64:$Rd, (fpimm0))]>,
@@ -4388,25 +4670,15 @@ defm BIC : SIMDModifiedImmVectorShiftTied<1, 0b11, 0b01, "bic", AArch64bici>;
 // AdvSIMD ORR
 defm ORR : SIMDModifiedImmVectorShiftTied<0, 0b11, 0b01, "orr", AArch64orri>;
 
-def : InstAlias<"bic $Vd.4h, $imm", (BICv4i16 V64:$Vd,  imm0_255:$imm, 0)>;
-def : InstAlias<"bic $Vd.8h, $imm", (BICv8i16 V128:$Vd, imm0_255:$imm, 0)>;
-def : InstAlias<"bic $Vd.2s, $imm", (BICv2i32 V64:$Vd,  imm0_255:$imm, 0)>;
-def : InstAlias<"bic $Vd.4s, $imm", (BICv4i32 V128:$Vd, imm0_255:$imm, 0)>;
+def : InstAlias<"{bic $Vd.4h, $imm|bic.4h $Vd, $imm}", (BICv4i16 V64:$Vd,  imm0_255:$imm, 0)>;
+def : InstAlias<"{bic $Vd.8h, $imm|bic.8h $Vd, $imm}", (BICv8i16 V128:$Vd, imm0_255:$imm, 0)>;
+def : InstAlias<"{bic $Vd.2s, $imm|bic.2s $Vd, $imm}", (BICv2i32 V64:$Vd,  imm0_255:$imm, 0)>;
+def : InstAlias<"{bic $Vd.4s, $imm|bic.4s $Vd, $imm}", (BICv4i32 V128:$Vd, imm0_255:$imm, 0)>;
 
-def : InstAlias<"bic.4h $Vd, $imm", (BICv4i16 V64:$Vd,  imm0_255:$imm, 0), 0>;
-def : InstAlias<"bic.8h $Vd, $imm", (BICv8i16 V128:$Vd, imm0_255:$imm, 0), 0>;
-def : InstAlias<"bic.2s $Vd, $imm", (BICv2i32 V64:$Vd,  imm0_255:$imm, 0), 0>;
-def : InstAlias<"bic.4s $Vd, $imm", (BICv4i32 V128:$Vd, imm0_255:$imm, 0), 0>;
-
-def : InstAlias<"orr $Vd.4h, $imm", (ORRv4i16 V64:$Vd,  imm0_255:$imm, 0)>;
-def : InstAlias<"orr $Vd.8h, $imm", (ORRv8i16 V128:$Vd, imm0_255:$imm, 0)>;
-def : InstAlias<"orr $Vd.2s, $imm", (ORRv2i32 V64:$Vd,  imm0_255:$imm, 0)>;
-def : InstAlias<"orr $Vd.4s, $imm", (ORRv4i32 V128:$Vd, imm0_255:$imm, 0)>;
-
-def : InstAlias<"orr.4h $Vd, $imm", (ORRv4i16 V64:$Vd,  imm0_255:$imm, 0), 0>;
-def : InstAlias<"orr.8h $Vd, $imm", (ORRv8i16 V128:$Vd, imm0_255:$imm, 0), 0>;
-def : InstAlias<"orr.2s $Vd, $imm", (ORRv2i32 V64:$Vd,  imm0_255:$imm, 0), 0>;
-def : InstAlias<"orr.4s $Vd, $imm", (ORRv4i32 V128:$Vd, imm0_255:$imm, 0), 0>;
+def : InstAlias<"{orr $Vd.4h, $imm|orr.4h $Vd, $imm}", (ORRv4i16 V64:$Vd,  imm0_255:$imm, 0)>;
+def : InstAlias<"{orr $Vd.8h, $imm|orr.8h $Vd, $imm}", (ORRv8i16 V128:$Vd, imm0_255:$imm, 0)>;
+def : InstAlias<"{orr $Vd.2s, $imm|orr.2s $Vd, $imm}", (ORRv2i32 V64:$Vd,  imm0_255:$imm, 0)>;
+def : InstAlias<"{orr $Vd.4s, $imm|orr.4s $Vd, $imm}", (ORRv4i32 V128:$Vd, imm0_255:$imm, 0)>;
 
 // AdvSIMD FMOV
 def FMOVv2f64_ns : SIMDModifiedImmVectorNoShift<1, 1, 0, 0b1111, V128, fpimm8,
@@ -6151,3 +6423,4 @@ def : Pat<(AArch64tcret texternalsym:$dst, (i32 timm:$FPDiff)),
           (TCRETURNdi texternalsym:$dst, imm:$FPDiff)>;
 
 include "AArch64InstrAtomics.td"
+include "AArch64SVEInstrInfo.td"

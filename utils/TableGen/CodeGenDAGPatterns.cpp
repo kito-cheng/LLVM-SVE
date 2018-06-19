@@ -44,6 +44,9 @@ static inline bool isVector(MVT::SimpleValueType VT) {
 static inline bool isScalar(MVT::SimpleValueType VT) {
   return !MVT(VT).isVector();
 }
+static inline bool isScalableVector(MVT::SimpleValueType VT) {
+  return MVT(VT).isScalableVector();
+}
 
 EEVT::TypeSet::TypeSet(MVT::SimpleValueType VT, TreePattern &TP) {
   if (VT == MVT::iAny)
@@ -325,8 +328,6 @@ bool EEVT::TypeSet::EnforceVector(TreePattern &TP) {
   return MadeChange;
 }
 
-
-
 /// EnforceSmallerThan - 'this' must be a smaller VT than Other. For vectors
 /// this should be based on the element type. Update this and other based on
 /// this information.
@@ -390,6 +391,22 @@ bool EEVT::TypeSet::EnforceSmallerThan(EEVT::TypeSet &Other, TreePattern &TP) {
                (A.getScalarSizeInBits() == B.getScalarSizeInBits() &&
                 A.getSizeInBits() < B.getSizeInBits());
       });
+
+    // TODO: SVE hack -- find a better way before sending upstream
+    if (isScalableVector(Other.TypeVec[0])) {
+      // If we have a WA vector, skip any non-wa types;
+      // Size ordering is a little messed up in this case
+      for (unsigned i = 0; !Smallest.isScalableVector() &&
+             i < TypeVec.size(); ++i)
+        Smallest = TypeVec[i];
+
+      if (!Smallest.isScalableVector()) {
+        TP.error("Type inference contradiction found, '" + InputSet.getName() +
+                 "' contains scalable vectors but '" + getName() +
+                 "' does not.");
+        return false;
+      }
+    }
 
     auto I = remove_if(Other.TypeVec, [Smallest](MVT OtherVT) {
       // Don't compare vector and non-vector types.
@@ -531,6 +548,7 @@ bool EEVT::TypeSet::EnforceVectorSubVectorTypeIs(EEVT::TypeSet &VTOperand,
   // Also force one vector to have more elements than the other.
   if (isConcrete()) {
     MVT IVT = getConcrete();
+    bool IsScalable = IVT.isScalableVector();
     unsigned NumElems = IVT.getVectorNumElements();
     IVT = IVT.getVectorElementType();
 
@@ -540,8 +558,13 @@ bool EEVT::TypeSet::EnforceVectorSubVectorTypeIs(EEVT::TypeSet &VTOperand,
     // Only keep types that have less elements than VTOperand.
     TypeSet InputSet(VTOperand);
 
-    auto I = remove_if(VTOperand.TypeVec, [NumElems](MVT VVT) {
-      return VVT.getVectorNumElements() >= NumElems;
+    // Logically a <2 x i32> should be a valid subvector of <n x 4 x i32>
+    // (so IsScalable && !OVT.isScalableIntegerVector() would be allowed)
+    // but there are as yet no obvious uses for that, and it would mean
+    // tightening the AArch64 NEON type requirements.
+    auto I = remove_if(VTOperand.TypeVec, [NumElems,IsScalable](MVT VVT) {
+      return VVT.getVectorNumElements() >= NumElems ||
+             VVT.isScalableVector() != IsScalable;
     });
     MadeChange |= I != VTOperand.TypeVec.end();
     VTOperand.TypeVec.erase(I, VTOperand.TypeVec.end());
@@ -554,6 +577,7 @@ bool EEVT::TypeSet::EnforceVectorSubVectorTypeIs(EEVT::TypeSet &VTOperand,
     }
   } else if (VTOperand.isConcrete()) {
     MVT IVT = VTOperand.getConcrete();
+    bool IsScalable = IVT.isScalableVector();
     unsigned NumElems = IVT.getVectorNumElements();
     IVT = IVT.getVectorElementType();
 
@@ -563,8 +587,13 @@ bool EEVT::TypeSet::EnforceVectorSubVectorTypeIs(EEVT::TypeSet &VTOperand,
     // Only keep types that have more elements than 'this'.
     TypeSet InputSet(*this);
 
-    auto I = remove_if(TypeVec, [NumElems](MVT VVT) {
-      return VVT.getVectorNumElements() <= NumElems;
+    // Logically a <2 x i32> should be a valid subvector of <n x 4 x i32>,
+    // (so !IsScalable && OVT.isScalableIntegerVector() would be allowed)
+    // but there are as yet no obvious uses for that, and it would mean
+    // tightening the AArch64 NEON type requirements.
+    auto I = remove_if(TypeVec, [NumElems,IsScalable](MVT VVT) {
+      return VVT.getVectorNumElements() <= NumElems ||
+             VVT.isScalableVector() != IsScalable;
     });
     MadeChange |= I != TypeVec.end();
     TypeVec.erase(I, TypeVec.end());

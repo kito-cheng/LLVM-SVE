@@ -44,12 +44,20 @@
 using namespace llvm;
 
 static cl::opt<bool>
-    RunPartialInlining("enable-partial-inlining", cl::init(false), cl::Hidden,
+    RunPartialInlining("enable-partial-inlining", cl::init(true), cl::Hidden,
                        cl::ZeroOrMore, cl::desc("Run Partial inlinining pass"));
 
 static cl::opt<bool>
     RunLoopVectorization("vectorize-loops", cl::Hidden,
                          cl::desc("Run the Loop vectorization passes"));
+
+static cl::opt<bool>
+UseSVEVectorizer("use-sve-vectorizer", cl::init(false), cl::Hidden,
+                 cl::desc("Use the SVE vectorizer instead of community"));
+
+static cl::opt<bool>
+BOSCC("insert-superword-control-flow", cl::init(false), cl::Hidden,
+      cl::desc("Run the 'Branch On Superword Condition Codes' (BOSCC) pass."));
 
 static cl::opt<bool>
 RunSLPVectorization("vectorize-slp", cl::Hidden,
@@ -124,6 +132,10 @@ static cl::opt<bool> UseLoopVersioningLICM(
     "enable-loop-versioning-licm", cl::init(false), cl::Hidden,
     cl::desc("Enable the experimental Loop Versioning LICM pass"));
 
+static cl::opt<bool> UseLoopSpeculativeBoundsChecking(
+    "enable-loop-speculative-bounds-checking", cl::init(true), cl::Hidden,
+    cl::desc("Enable experimental loop speculative bounds checking pass"));
+
 static cl::opt<bool>
     DisablePreInliner("disable-preinline", cl::init(false), cl::Hidden,
                       cl::desc("Disable pre-instrumentation inliner"));
@@ -150,6 +162,15 @@ static cl::opt<bool>
     EnableSimpleLoopUnswitch("enable-simple-loop-unswitch", cl::init(false),
                              cl::Hidden,
                              cl::desc("Enable the simple loop unswitch pass."));
+
+static cl::opt<bool> EnableLoopExprTreeFactoring(
+    "enable-loop-expr-tree-factoring", cl::init(true), cl::Hidden,
+    cl::desc("Enable pass that rewrites add/mul expression trees by factoring "
+             "out common multiplies"));
+
+static cl::opt<bool> EnablePreInlinerTransforms(
+    "enable-pre-inliner-transforms", cl::init(true), cl::Hidden,
+    cl::desc("Enable pre-inliner transforms"));
 
 static cl::opt<bool> EnableGVNSink(
     "enable-gvn-sink", cl::init(false), cl::Hidden,
@@ -365,6 +386,7 @@ void PassManagerBuilder::addFunctionSimplificationPasses(
 
   if (OptLevel > 1) {
     MPM.add(createMergedLoadStoreMotionPass()); // Merge ld/st in diamonds
+    MPM.add(createLoopRewriteGEPsPass()); // Provide more LoadPRE opportunities
     MPM.add(NewGVN ? createNewGVNPass()
                    : createGVNPass(DisableGVNLoadPRE)); // Remove redundancies
   }
@@ -383,6 +405,12 @@ void PassManagerBuilder::addFunctionSimplificationPasses(
   MPM.add(createJumpThreadingPass());         // Thread jumps
   MPM.add(createCorrelatedValuePropagationPass());
   MPM.add(createDeadStoreEliminationPass());  // Delete dead stores
+  if (EnableLoopExprTreeFactoring && OptLevel > 2) {
+    MPM.add(createLICMPass());
+    MPM.add(createLoopExprTreeFactoringPass());
+    MPM.add(createAggressiveDCEPass());         // Delete dead instructions
+    MPM.add(createEarlyCSEPass());
+  }
   MPM.add(createLICMPass());
 
   addExtensionsToPM(EP_ScalarOptimizerLate, MPM);
@@ -463,6 +491,11 @@ void PassManagerBuilder::populateModulePassManager(
       PrepareForThinLTO && !PGOSampleUse.empty();
   if (PrepareForThinLTOUsingPGOSampleProfile)
     DisableUnrollLoops = true;
+
+  if (Inliner && EnablePreInlinerTransforms) {
+    MPM.add(createPreInlinerTransformsPass());
+    MPM.add(NewGVN ? createNewGVNPass() : createGVNPass(true));
+  }
 
   if (!DisableUnitAtATime) {
     // Infer attributes about declarations if possible.
@@ -593,7 +626,17 @@ void PassManagerBuilder::populateModulePassManager(
   // llvm.loop.distribute=true or when -enable-loop-distribute is specified.
   MPM.add(createLoopDistributePass());
 
-  MPM.add(createLoopVectorizePass(DisableUnrollLoops, LoopVectorize));
+  // TODO: Decide if this is the best place to run this pass....
+  if (UseLoopSpeculativeBoundsChecking)
+    MPM.add(createLoopSpeculativeBoundsCheckPass());
+
+  if (UseSVEVectorizer)
+    MPM.add(createSVELoopVectorizePass(DisableUnrollLoops, LoopVectorize));
+  else
+    MPM.add(createLoopVectorizePass(DisableUnrollLoops, LoopVectorize));
+
+  if (BOSCC)
+    MPM.add(createBOSCCPass());
 
   // Eliminate loads by forwarding stores from the previous iteration to loads
   // of the current iteration.
@@ -631,6 +674,7 @@ void PassManagerBuilder::populateModulePassManager(
 
   addExtensionsToPM(EP_Peephole, MPM);
   MPM.add(createLateCFGSimplificationPass()); // Switches to lookup tables
+  MPM.add(createSeparateInvariantsFromGepOffsetPass());
   addInstructionCombiningPass(MPM);
 
   if (!DisableUnrollLoops) {
@@ -791,7 +835,12 @@ void PassManagerBuilder::addLTOOptimizationPasses(legacy::PassManagerBase &PM) {
 
   if (!DisableUnrollLoops)
     PM.add(createSimpleLoopUnrollPass(OptLevel));   // Unroll small loops
-  PM.add(createLoopVectorizePass(true, LoopVectorize));
+
+  if (UseSVEVectorizer)
+    PM.add(createSVELoopVectorizePass(true, LoopVectorize));
+  else
+    PM.add(createLoopVectorizePass(true, LoopVectorize));
+
   // The vectorizer may have significantly shortened a loop body; unroll again.
   if (!DisableUnrollLoops)
     PM.add(createLoopUnrollPass(OptLevel));

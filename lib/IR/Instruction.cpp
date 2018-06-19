@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/IR/Instruction.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constants.h"
@@ -490,7 +491,8 @@ bool Instruction::mayReadFromMemory() const {
   case Instruction::CatchRet:
     return true;
   case Instruction::Call:
-    return !cast<CallInst>(this)->doesNotAccessMemory();
+    return (!cast<CallInst>(this)->doesNotAccessMemory()
+            && !isa<MemSetInst>(this));
   case Instruction::Invoke:
     return !cast<InvokeInst>(this)->doesNotAccessMemory();
   case Instruction::Store:

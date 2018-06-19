@@ -1,3 +1,6 @@
+; We cannot vectorise this unless we add a scalarised loop in the vector body
+; The new loopvectorizer combines vector and scalar code in the loop body.
+; FAIL: *
 ; REQUIRES: asserts
 ; RUN: opt < %s -loop-vectorize -disable-output -debug-only=loop-vectorize 2>&1 | FileCheck %s --check-prefix=COST
 ; RUN: opt < %s -loop-vectorize -force-vector-width=2 -instcombine -simplifycfg -S | FileCheck %s

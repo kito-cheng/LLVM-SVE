@@ -18,12 +18,15 @@
 #include "llvm/IR/GlobalAlias.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/Statepoint.h"
 
 using namespace llvm;
+using namespace llvm::PatternMatch;
 
 static bool isAligned(const Value *Base, const APInt &Offset, unsigned Align,
                       const DataLayout &DL) {
@@ -339,6 +342,19 @@ Value *llvm::FindAvailablePtrLoadStore(Value *Ptr, Type *AccessTy,
                                        unsigned MaxInstsToScan,
                                        AliasAnalysis *AA, bool *IsLoadCSE,
                                        unsigned *NumScanedInst) {
+  auto AllTrueMask = AccessTy->isVectorTy()
+                         ? ConstantInt::getTrue(
+                               VectorType::getBool(cast<VectorType>(AccessTy)))
+                         : ConstantInt::getTrue(Ptr->getContext());
+  return FindAvailablePtrMaskedLoadStore(
+      Ptr, AllTrueMask, UndefValue::get(AccessTy), AccessTy, AtLeastAtomic, ScanBB,
+      ScanFrom, MaxInstsToScan, AA, IsLoadCSE, NumScanedInst);
+}
+
+Value *llvm::FindAvailablePtrMaskedLoadStore(
+    Value *Ptr, Value *Mask, Value *Passthru, Type *AccessTy, bool AtLeastAtomic,
+    BasicBlock *ScanBB, BasicBlock::iterator &ScanFrom, unsigned MaxInstsToScan,
+    AliasAnalysis *AA, bool *IsLoadCSE, unsigned *NumScanedInst) {
   if (MaxInstsToScan == 0)
     MaxInstsToScan = ~0U;
 
@@ -370,51 +386,67 @@ Value *llvm::FindAvailablePtrLoadStore(Value *Ptr, Type *AccessTy,
     // If this is a load of Ptr, the loaded value is available.
     // (This is true even if the load is volatile or atomic, although
     // those cases are unlikely.)
-    if (LoadInst *LI = dyn_cast<LoadInst>(Inst))
-      if (AreEquivalentAddressValues(
-              LI->getPointerOperand()->stripPointerCasts(), StrippedPtr) &&
-          CastInst::isBitOrNoopPointerCastable(LI->getType(), AccessTy, DL)) {
+    Value *InstPtr = nullptr, *InstPassthru = nullptr, *InstMask = nullptr;
+    if (match(Inst, m_AnyLoad(m_Value(InstPtr), m_Value(), m_Value(InstMask),
+                              m_Value(InstPassthru)))) {
+      auto *ConstInstMask = dyn_cast_or_null<Constant>(InstMask);
+      bool maskAllOnes = ConstInstMask && ConstInstMask->isAllOnesValue();
+
+      if (AreEquivalentAddressValues(InstPtr->stripPointerCasts(),
+                                     StrippedPtr) &&
+          CastInst::isBitOrNoopPointerCastable(Inst->getType(), AccessTy, DL) &&
+          ((maskAllOnes && isa<UndefValue>(Passthru)) ||
+           (InstMask == Mask &&
+            (Passthru == InstPassthru || (isa<UndefValue>(Passthru)))))) {
 
         // We can value forward from an atomic to a non-atomic, but not the
         // other way around.
-        if (LI->isAtomic() < AtLeastAtomic)
+        if (Inst->isAtomic() < AtLeastAtomic)
           return nullptr;
 
         if (IsLoadCSE)
-            *IsLoadCSE = true;
-        return LI;
-      }
+          *IsLoadCSE = true;
 
-    if (StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
-      Value *StorePtr = SI->getPointerOperand()->stripPointerCasts();
+        return Inst;
+      }
+    }
+
+    Value *InstVal = nullptr;
+    if (match(Inst, m_AnyStore(m_Value(InstVal), m_Value(InstPtr), m_Value(),
+                               m_Value(InstMask)))) {
       // If this is a store through Ptr, the value is available!
       // (This is true even if the store is volatile or atomic, although
       // those cases are unlikely.)
-      if (AreEquivalentAddressValues(StorePtr, StrippedPtr) &&
-          CastInst::isBitOrNoopPointerCastable(SI->getValueOperand()->getType(),
-                                               AccessTy, DL)) {
+      auto *ConstInstMask = dyn_cast_or_null<Constant>(InstMask);
+      bool maskAllOnes = ConstInstMask && ConstInstMask->isAllOnesValue();
+      if (AreEquivalentAddressValues(InstPtr->stripPointerCasts(),
+                                     StrippedPtr) &&
+          CastInst::isBitOrNoopPointerCastable(InstVal->getType(), AccessTy,
+                                               DL) &&
+          ((InstMask == Mask || maskAllOnes) && isa<UndefValue>(Passthru))) {
 
         // We can value forward from an atomic to a non-atomic, but not the
         // other way around.
-        if (SI->isAtomic() < AtLeastAtomic)
+        if (Inst->isAtomic() < AtLeastAtomic)
           return nullptr;
 
         if (IsLoadCSE)
           *IsLoadCSE = false;
-        return SI->getOperand(0);
+        return Inst->getOperand(0);
       }
 
       // If both StrippedPtr and StorePtr reach all the way to an alloca or
       // global and they are different, ignore the store. This is a trivial form
       // of alias analysis that is important for reg2mem'd code.
       if ((isa<AllocaInst>(StrippedPtr) || isa<GlobalVariable>(StrippedPtr)) &&
-          (isa<AllocaInst>(StorePtr) || isa<GlobalVariable>(StorePtr)) &&
-          StrippedPtr != StorePtr)
+          (isa<AllocaInst>(InstPtr) || isa<GlobalVariable>(InstPtr)) &&
+          StrippedPtr != InstPtr)
         continue;
 
       // If we have alias analysis and it says the store won't modify the loaded
       // value, ignore the store.
-      if (AA && (AA->getModRefInfo(SI, StrippedPtr, AccessSize) & MRI_Mod) == 0)
+      if (AA &&
+          (AA->getModRefInfo(Inst, StrippedPtr, AccessSize) & MRI_Mod) == 0)
         continue;
 
       // Otherwise the store that may or may not alias the pointer, bail out.

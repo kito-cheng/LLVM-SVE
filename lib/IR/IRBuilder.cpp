@@ -364,6 +364,27 @@ CallInst *IRBuilderBase::CreateMaskedLoad(Value *Ptr, unsigned Align,
                                OverloadedTypes, Name);
 }
 
+/// \brief Create a call to a Masked Speculative Load intrinsic.
+/// \p Ptr      - the base pointer for the load
+/// \p Align    - alignment of the source location
+/// \p Mask     - an vector of booleans which indicates what vector lanes should
+///               be accessed in memory
+/// \p PassThru - a pass-through value that is used to fill the masked-off lanes
+///               of the result
+/// \p Name     - name of the result variable
+CallInst *IRBuilderBase::CreateMaskedSpecLoad(Value *Ptr, unsigned Align,
+                                              Value *Mask, Value *PassThru,
+                                              const Twine &Name) {
+  assert(Ptr->getType()->isPointerTy() && "Ptr must be of pointer type");
+  // DataTy is the overloaded type
+  Type *DataTy = cast<PointerType>(Ptr->getType())->getElementType();
+  assert(DataTy->isVectorTy() && "Ptr should point to a vector");
+  if (!PassThru)
+    PassThru = UndefValue::get(DataTy);
+  Value *Ops[] = { Ptr, getInt32(Align), Mask, PassThru};
+  return CreateMaskedIntrinsic(Intrinsic::masked_spec_load, Ops, DataTy, Name);
+}
+
 /// \brief Create a call to a Masked Store intrinsic.
 /// \p Val   - data to be stored,
 /// \p Ptr   - base pointer for the store
@@ -405,13 +426,12 @@ CallInst *IRBuilderBase::CreateMaskedGather(Value *Ptrs, unsigned Align,
                                             const Twine& Name) {
   auto PtrsTy = cast<VectorType>(Ptrs->getType());
   auto PtrTy = cast<PointerType>(PtrsTy->getElementType());
-  unsigned NumElts = PtrsTy->getVectorNumElements();
+  auto NumElts = PtrsTy->getElementCount();
   Type *DataTy = VectorType::get(PtrTy->getElementType(), NumElts);
 
   if (!Mask)
-    Mask = Constant::getAllOnesValue(VectorType::get(Type::getInt1Ty(Context),
+    Mask = ConstantInt::getTrue(VectorType::get(Type::getInt1Ty(Context),
                                      NumElts));
-
   if (!PassThru)
     PassThru = UndefValue::get(DataTy);
 
@@ -435,17 +455,17 @@ CallInst *IRBuilderBase::CreateMaskedScatter(Value *Data, Value *Ptrs,
                                              unsigned Align, Value *Mask) {
   auto PtrsTy = cast<VectorType>(Ptrs->getType());
   auto DataTy = cast<VectorType>(Data->getType());
-  unsigned NumElts = PtrsTy->getVectorNumElements();
+  auto NumElts = PtrsTy->getElementCount();
 
 #ifndef NDEBUG
   auto PtrTy = cast<PointerType>(PtrsTy->getElementType());
-  assert(NumElts == DataTy->getVectorNumElements() &&
+  assert(NumElts == DataTy->getElementCount() &&
          PtrTy->getElementType() == DataTy->getElementType() &&
          "Incompatible pointer and data types");
 #endif
 
   if (!Mask)
-    Mask = Constant::getAllOnesValue(VectorType::get(Type::getInt1Ty(Context),
+    Mask = ConstantInt::getTrue(VectorType::get(Type::getInt1Ty(Context),
                                      NumElts));
 
   Type *OverloadedTypes[] = {DataTy, PtrsTy};
@@ -609,6 +629,16 @@ CallInst *IRBuilderBase::CreateGCRelocate(Instruction *Statepoint,
                   getInt32(BaseOffset),
                   getInt32(DerivedOffset)};
  return createCallHelper(FnGCRelocate, Args, this, Name);
+}
+
+CallInst *IRBuilderBase::CreateCntVPop(Value *PredVec, const Twine &Name) {
+  Value *Ops[] = { PredVec };
+  Type *Tys[] = { PredVec->getType() };
+
+  Module *M = BB->getParent()->getParent();
+  Value *Func = Intrinsic::getDeclaration(M, Intrinsic::ctvpop, Tys);
+
+  return createCallHelper(Func, Ops, this, Name);
 }
 
 CallInst *IRBuilderBase::CreateBinaryIntrinsic(Intrinsic::ID ID,

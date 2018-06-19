@@ -75,6 +75,16 @@ PrintAfter("print-after",
            llvm::cl::desc("Print IR after specified passes"),
            cl::Hidden);
 
+static cl::opt<std::string>
+PrintBeforePass("print-before-pass",
+                llvm::cl::desc("Print IR before specified pass"),
+                cl::Hidden);
+
+static cl::opt<std::string>
+PrintAfterPass("print-after-pass",
+               llvm::cl::desc("Print IR after specified pass"),
+               cl::Hidden);
+
 static cl::opt<bool>
 PrintBeforeAll("print-before-all",
                llvm::cl::desc("Print IR before each pass"),
@@ -108,13 +118,15 @@ static bool ShouldPrintBeforeOrAfterPass(const PassInfo *PI,
 /// This is a utility to check whether a pass should have IR dumped
 /// before it.
 static bool ShouldPrintBeforePass(const PassInfo *PI) {
-  return PrintBeforeAll || ShouldPrintBeforeOrAfterPass(PI, PrintBefore);
+  return PrintBeforeAll || ShouldPrintBeforeOrAfterPass(PI, PrintBefore) ||
+         (PrintBeforePass == PI->getPassArgument());
 }
 
 /// This is a utility to check whether a pass should have IR dumped
 /// after it.
 static bool ShouldPrintAfterPass(const PassInfo *PI) {
-  return PrintAfterAll || ShouldPrintBeforeOrAfterPass(PI, PrintAfter);
+  return PrintAfterAll || ShouldPrintBeforeOrAfterPass(PI, PrintAfter) ||
+         (PrintAfterPass == PI->getPassArgument());
 }
 
 bool llvm::isFunctionInPrintList(StringRef FunctionName) {

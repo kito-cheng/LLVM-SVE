@@ -201,6 +201,9 @@ namespace CallingConv {
     /// Register calling convention used for parameters transfer optimization
     X86_RegCall = 92,
 
+    /// Calling convention between AArch64 SVE functions
+    AArch64_SVE_VectorCall = 93,
+
     /// Calling convention used for Mesa hull shaders. (= tessellation control
     /// shaders)
     AMDGPU_HS = 93,
@@ -208,6 +211,9 @@ namespace CallingConv {
     /// Calling convention used for special MSP430 rtlib functions
     /// which have an "optimized" convention using additional registers.
     MSP430_BUILTIN = 94,
+
+    // Calling convention between AArch64 Advanced SIMD functions
+    AArch64_VectorCall = 95,
 
     /// The highest possible calling convention ID. Must be some 2^k - 1.
     MaxID = 1023

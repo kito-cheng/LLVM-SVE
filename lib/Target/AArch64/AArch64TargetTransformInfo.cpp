@@ -23,6 +23,11 @@ using namespace llvm;
 static cl::opt<bool> EnableFalkorHWPFUnrollFix("enable-falkor-hwpf-unroll-fix",
                                                cl::init(true), cl::Hidden);
 
+cl::opt<bool> DisableSveGatherScatter(
+        "disable-sve-gather-scatter", cl::init(false), cl::Hidden,
+        cl::ZeroOrMore,
+        cl::desc("Disable use of sve gather/scatter instructions"));
+
 bool AArch64TTIImpl::areInlineCompatible(const Function *Caller,
                                          const Function *Callee) const {
   const TargetMachine &TM = getTLI()->getTargetMachine();
@@ -390,6 +395,72 @@ int AArch64TTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src,
                                                  SrcTy.getSimpleVT()))
     return Entry->Cost;
 
+  static const TypeConversionCostTblEntry SVEConversionTbl[] = {
+    // Truncating two illegal vectors into one legal vector,
+    // can be done with one instruction on SVE e.g.
+    // UZP1([ .....v7 | .....v6 | .....v5 | .....v4 ],
+    //      [ .....v3 | .....v2 | .....v1 | .....v0 ])
+    //    = [ v7 | v6 | v5 | v4 | v3 | v2 | v1 | v0 ]
+    // If type is smaller than half the size, ANDI
+    // can be used to fill zeros in high bits.
+    { ISD::TRUNCATE,    MVT::nxv8i32,  MVT::nxv8i64, 2 * 1 },
+    { ISD::TRUNCATE,    MVT::nxv4i32,  MVT::nxv4i64,     1 },
+    { ISD::TRUNCATE,    MVT::nxv4i16,  MVT::nxv4i64,     2 },
+    { ISD::TRUNCATE,    MVT::nxv8i16,  MVT::nxv8i32,     1 },
+    { ISD::TRUNCATE,    MVT::nxv8i8,   MVT::nxv8i32,     2 },
+    { ISD::TRUNCATE,    MVT::nxv16i8,  MVT::nxv16i16,    1 },
+    { ISD::TRUNCATE,    MVT::nxv16i8,  MVT::nxv16i32,    3 }, // uzp1(uzp1(A),uzp1(B))
+
+    // Zero extend happens with unpack, possibly with 'AND'
+    // to zero the high bits.
+    { ISD::ZERO_EXTEND, MVT::nxv8i64,  MVT::nxv8i32, 4 },
+    { ISD::ZERO_EXTEND, MVT::nxv4i64,  MVT::nxv4i32, 2 },
+    { ISD::ZERO_EXTEND, MVT::nxv4i64,  MVT::nxv4i16, 4 },
+    { ISD::ZERO_EXTEND, MVT::nxv8i32,  MVT::nxv8i16, 2 },
+    { ISD::ZERO_EXTEND, MVT::nxv8i32,  MVT::nxv8i8,  4 },
+    { ISD::ZERO_EXTEND, MVT::nxv16i16, MVT::nxv16i8, 2 },
+    { ISD::ZERO_EXTEND, MVT::nxv16i32, MVT::nxv16i8, 4 },
+
+    // Zero extending requires zeroing high bits,
+    // can be done with a ANDI instruction that fills
+    // in zeros in high bits. Because it is so cheap,
+    // we override BaseT's implementation.
+    { ISD::ZERO_EXTEND, MVT::nxv2i64,  MVT::nxv2i32, 1 },
+    { ISD::ZERO_EXTEND, MVT::nxv2i64,  MVT::nxv2i16, 1 },
+    { ISD::ZERO_EXTEND, MVT::nxv4i32,  MVT::nxv4i16, 1 },
+    { ISD::ZERO_EXTEND, MVT::nxv2i64,  MVT::nxv2i8,  1 },
+    { ISD::ZERO_EXTEND, MVT::nxv4i32,  MVT::nxv4i8,  1 },
+    { ISD::ZERO_EXTEND, MVT::nxv8i16,  MVT::nxv8i8,  1 },
+
+    // Truncating legal type to smaller type
+    // is free because the vector is unpacked.
+    { ISD::TRUNCATE,    MVT::nxv2i32,  MVT::nxv2i64, 0 },
+    { ISD::TRUNCATE,    MVT::nxv2i16,  MVT::nxv2i64, 0 },
+    { ISD::TRUNCATE,    MVT::nxv2i8,   MVT::nxv2i64, 0 },
+    { ISD::TRUNCATE,    MVT::nxv4i16,  MVT::nxv4i32, 0 },
+    { ISD::TRUNCATE,    MVT::nxv4i8,   MVT::nxv4i32, 0 },
+    { ISD::TRUNCATE,    MVT::nxv8i8,   MVT::nxv8i16, 0 },
+
+    // Floating point extend / truncate
+    { ISD::FP_ROUND,    MVT::nxv2f32,  MVT::nxv2f64, 1 },
+    { ISD::FP_ROUND,    MVT::nxv4f32,  MVT::nxv4f64, 2 },
+    { ISD::FP_EXTEND,   MVT::nxv2f64,  MVT::nxv2f32, 1 },
+    { ISD::FP_EXTEND,   MVT::nxv4f64,  MVT::nxv4f32, 2 },
+
+    { ISD::SINT_TO_FP, MVT::nxv4f32, MVT::nxv4i32, 1 },
+    { ISD::SINT_TO_FP, MVT::nxv2f64, MVT::nxv2i64, 1 },
+    { ISD::SINT_TO_FP, MVT::nxv2f32, MVT::nxv2i32, 1 },
+    { ISD::UINT_TO_FP, MVT::nxv2f32, MVT::nxv2i32, 1 },
+    { ISD::UINT_TO_FP, MVT::nxv4f32, MVT::nxv4i32, 1 },
+    { ISD::UINT_TO_FP, MVT::nxv2f64, MVT::nxv2i64, 1 },
+  };
+
+  if (getST()->hasSVE())
+    if (const auto *Entry = ConvertCostTableLookup(SVEConversionTbl, ISD,
+                                                   DstTy.getSimpleVT(),
+                                                   SrcTy.getSimpleVT()))
+      return Entry->Cost;
+
   return BaseT::getCastInstrCost(Opcode, Dst, Src);
 }
 
@@ -554,6 +625,12 @@ int AArch64TTIImpl::getCmpSelInstrCost(unsigned Opcode, Type *ValTy,
   // We don't lower some vector selects well that are wider than the register
   // width.
   if (ValTy->isVectorTy() && ISD == ISD::SELECT) {
+    if (ST->hasSVE()) {
+      EVT SelValTy = TLI->getValueType(DL, ValTy);
+      if (SelValTy.isScalableVector()) {
+        return SelValTy.getSizeInBits() / 128;
+      }
+    }
     // We would need this many instructions to hide the scalarization happening.
     const int AmortizationCost = 20;
     static const TypeConversionCostTblEntry
@@ -576,6 +653,63 @@ int AArch64TTIImpl::getCmpSelInstrCost(unsigned Opcode, Type *ValTy,
     }
   }
   return BaseT::getCmpSelInstrCost(Opcode, ValTy, CondTy, I);
+}
+
+unsigned AArch64TTIImpl::getVectorMemoryOpCost(unsigned Opcode, Type *Src,
+                                               Value *Ptr, unsigned Alignment,
+                                               unsigned AddressSpace,
+                                               const MemAccessInfo &Info,
+                                               Instruction *I) {
+  if (!ST->hasSVE())
+    return getMemoryOpCost(Opcode, Src, Alignment, AddressSpace);
+
+  std::pair<unsigned, MVT> LT = TLI->getTypeLegalizationCost(DL, Src);
+
+  if (Info.isUniform() || (Info.isStrided() && std::abs(Info.getStride())==1))
+    return LT.first;
+
+  unsigned NumElems = LT.second.getVectorNumElements();
+
+  // In the general case, strided loads of stride=1,2,3 are 'cheap'
+  // by using the LD(1|2|3) instructions, because they load a full
+  // vector in one operation. Strided stores on the other hand are
+  // expensive.. even though we have ST(2|3) instructions available, it
+  // also needs to store 1|2 different values to fill the gaps between
+  // the stride. Also add cost for the use of more result registers
+  // of LD2 (two result regs) and LD3 (three result regs).
+  if (Info.isStrided()) {
+    switch (std::abs(Info.getStride())) {
+    case 2:
+    case 3:
+      // Assume gather is used for double-word vectors.
+      if (Opcode == Instruction::Load &&
+        Src->getVectorElementType()->getScalarSizeInBits() <= 32)
+        return LT.first + (std::abs(Info.getStride()) - 1);
+    default:
+      break;
+    }
+  }
+
+  unsigned GatherWeight = 2;
+  if (Info.isNonStrided()) {
+    switch (Info.getIndexType()->getScalarSizeInBits()) {
+    case 8:
+    case 16:
+    case 32:
+      // Only handle worst case, because having
+      // index type < 64 bit is same as having
+      // strided not 1,2,3,4.
+      break;
+    default:
+      unsigned NumOps = std::max(1U, NumElems/2);
+      return GatherWeight * LT.first * NumOps;
+    }
+  }
+
+  // With a gather offset < 64bits, we can load/store 4 elements at a time,
+  // so number of operations is NumElems divided by 4.
+  unsigned NumOps = std::max(1U,NumElems/4);
+  return GatherWeight * LT.first * NumOps;
 }
 
 int AArch64TTIImpl::getMemoryOpCost(unsigned Opcode, Type *Ty,
@@ -846,6 +980,11 @@ unsigned AArch64TTIImpl::getMaxPrefetchIterationsAhead() {
 bool AArch64TTIImpl::useReductionIntrinsic(unsigned Opcode, Type *Ty,
                                            TTI::ReductionFlags Flags) const {
   assert(isa<VectorType>(Ty) && "Expected Ty to be a vector type");
+  // For SVE, we must use intrinsics for representing reductions.
+  // Whether or not we can actually implement this reduction with SVE is handled
+  // by canReduceInVector().
+  if (Ty->getVectorIsScalable())
+    return true;
   unsigned ScalarBits = Ty->getScalarSizeInBits();
   switch (Opcode) {
   case Instruction::FAdd:
@@ -866,4 +1005,41 @@ bool AArch64TTIImpl::useReductionIntrinsic(unsigned Opcode, Type *Ty,
     llvm_unreachable("Unhandled reduction opcode");
   }
   return false;
+}
+
+bool AArch64TTIImpl::canReduceInVector(unsigned Opcode, Type *ScalarTy,
+                                       TTI::ReductionFlags Flags) const {
+  // NEON can handle any kind of reduction by using shuffles, except ordered
+  // reductions.
+  if (!getST()->hasSVE())
+    return !Flags.IsOrdered;
+
+  if (ScalarTy->isFP128Ty())
+    return false;
+
+  switch (Opcode) {
+  default:
+    return false;
+  case Instruction::Add:
+  case Instruction::And:
+  case Instruction::Or:
+  case Instruction::Xor:
+  case Instruction::FAdd:
+  case Instruction::ICmp:
+  case Instruction::FCmp:
+    return true;
+  }
+  return false;
+}
+
+bool AArch64TTIImpl::isLegalMaskedGather(Type *DataType) {
+  if (DisableSveGatherScatter)
+    return false;
+  return ST->hasSVE();
+}
+
+bool AArch64TTIImpl::isLegalMaskedScatter(Type *DataType) {
+  if (DisableSveGatherScatter)
+    return false;
+  return ST->hasSVE();
 }

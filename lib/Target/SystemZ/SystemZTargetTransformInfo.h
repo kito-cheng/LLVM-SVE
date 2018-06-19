@@ -55,6 +55,9 @@ public:
 
   unsigned getNumberOfRegisters(bool Vector);
   unsigned getRegisterBitWidth(bool Vector) const;
+  unsigned getRegisterBitWidthUpperBound(bool Vector) {
+    return getRegisterBitWidth(Vector);
+  }
 
   unsigned getCacheLineSize() { return 256; }
   unsigned getPrefetchDistance() { return 2000; }

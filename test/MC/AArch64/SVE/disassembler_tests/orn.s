@@ -1,0 +1,26 @@
+# RUN: llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -disassemble -mattr=+sve < %s | FileCheck %s
+# RUN: llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -disassemble -mattr=-sve 2>&1 < %s | FileCheck --check-prefix=CHECK-ERROR  %s
+0x00,0x00,0x00,0x05
+# CHECK: orr     z0.s, z0.s, #0x1 // encoding: [0x00,0x00,0x00,0x05]
+# CHECK-ERROR: invalid instruction encoding
+0x55,0x55,0x85,0x25
+# CHECK: orn     p5.b, p5/z, p10.b, p5.b // encoding: [0x55,0x55,0x85,0x25]
+# CHECK-ERROR: invalid instruction encoding
+0x55,0x55,0x01,0x05
+# CHECK: orr     z21.h, z21.h, #0xffc1 // encoding: [0x55,0x55,0x01,0x05]
+# CHECK-ERROR: invalid instruction encoding
+0x25,0x0e,0x00,0x05
+# CHECK: orr     z5.b, z5.b, #0x81 // encoding: [0x25,0x0e,0x00,0x05]
+# CHECK-ERROR: invalid instruction encoding
+0xff,0x7d,0x8f,0x25
+# CHECK: orn     p15.b, p15/z, p15.b, p15.b // encoding: [0xff,0x7d,0x8f,0x25]
+# CHECK-ERROR: invalid instruction encoding
+0x10,0x40,0x80,0x25
+# CHECK: orn     p0.b, p0/z, p0.b, p0.b // encoding: [0x10,0x40,0x80,0x25]
+# CHECK-ERROR: invalid instruction encoding
+0xb7,0xed,0x00,0x05
+# CHECK: orr     z23.h, z23.h, #0xfff9 // encoding: [0xb7,0xed,0x00,0x05]
+# CHECK-ERROR: invalid instruction encoding
+0xb7,0x6d,0x88,0x25
+# CHECK: orn     p7.b, p11/z, p13.b, p8.b // encoding: [0xb7,0x6d,0x88,0x25]
+# CHECK-ERROR: invalid instruction encoding

@@ -23,6 +23,7 @@
 #include "llvm/Analysis/BranchProbabilityInfo.h"
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/Constants.h"
@@ -775,6 +776,7 @@ public:
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.addRequired<TargetPassConfig>();
     AU.addRequired<TargetLibraryInfoWrapperPass>();
+    AU.addRequired<TargetTransformInfoWrapperPass>();
     AU.addRequired<AssumptionCacheTracker>();
   }
 
@@ -800,6 +802,7 @@ public:
 
     auto *DL = &F.getParent()->getDataLayout();
     auto &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+    auto &TTI = getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
     auto &ACT = getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
 
     // Compute DT and LI only for functions that have the attribute.
@@ -811,7 +814,7 @@ public:
     DominatorTree DT(F);
     LoopInfo LI(DT);
 
-    ScalarEvolution SE(F, TLI, ACT, DT, LI);
+    ScalarEvolution SE(F, TLI, ACT, DT, LI, TTI);
 
     return SafeStack(F, *TL, *DL, SE).run();
   }

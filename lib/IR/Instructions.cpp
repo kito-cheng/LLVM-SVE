@@ -1794,7 +1794,7 @@ ShuffleVectorInst::ShuffleVectorInst(Value *V1, Value *V2, Value *Mask,
                                      const Twine &Name,
                                      Instruction *InsertBefore)
 : Instruction(VectorType::get(cast<VectorType>(V1->getType())->getElementType(),
-                cast<VectorType>(Mask->getType())->getNumElements()),
+                cast<VectorType>(Mask->getType())->getElementCount()),
               ShuffleVector,
               OperandTraits<ShuffleVectorInst>::op_begin(this),
               OperandTraits<ShuffleVectorInst>::operands(this),
@@ -1811,7 +1811,7 @@ ShuffleVectorInst::ShuffleVectorInst(Value *V1, Value *V2, Value *Mask,
                                      const Twine &Name,
                                      BasicBlock *InsertAtEnd)
 : Instruction(VectorType::get(cast<VectorType>(V1->getType())->getElementType(),
-                cast<VectorType>(Mask->getType())->getNumElements()),
+                cast<VectorType>(Mask->getType())->getElementCount()),
               ShuffleVector,
               OperandTraits<ShuffleVectorInst>::op_begin(this),
               OperandTraits<ShuffleVectorInst>::operands(this),
@@ -1831,71 +1831,69 @@ bool ShuffleVectorInst::isValidOperands(const Value *V1, const Value *V2,
   if (!V1->getType()->isVectorTy() || V1->getType() != V2->getType())
     return false;
   
-  // Mask must be vector of i32.
+  // Mask must be a vector of integers.  Historically the mask had to be
+  // a constant vector of i32s, but for variable vectors it often makes
+  // more sense for the mask to have the same element width as the other
+  // inputs and the output.
   auto *MaskTy = dyn_cast<VectorType>(Mask->getType());
-  if (!MaskTy || !MaskTy->getElementType()->isIntegerTy(32))
+  if (!MaskTy || !MaskTy->getElementType()->isIntegerTy())
     return false;
 
-  // Check to see if Mask is valid.
-  if (isa<UndefValue>(Mask) || isa<ConstantAggregateZero>(Mask))
-    return true;
+  return true;
+}
 
-  if (const auto *MV = dyn_cast<ConstantVector>(Mask)) {
-    unsigned V1Size = cast<VectorType>(V1->getType())->getNumElements();
-    for (Value *Op : MV->operands()) {
-      if (auto *CI = dyn_cast<ConstantInt>(Op)) {
-        if (CI->uge(V1Size*2))
-          return false;
-      } else if (!isa<UndefValue>(Op)) {
-        return false;
+/// getMaskValue - Try to extract the index from the shuffle mask for the
+/// specified output result, returning true on success.  This is either
+/// -1 if the element is undef or a number less than 2*numelements.
+bool ShuffleVectorInst::getMaskValue(Value *Mask, unsigned i, int &Result) {
+  assert(i < Mask->getType()->getVectorNumElements() && "Index out of range");
+  if (auto *CDS = dyn_cast<ConstantDataSequential>(Mask)) {
+    Result = CDS->getElementAsInteger(i);
+    return true;
+  }
+  if (auto *C = dyn_cast<Constant>(Mask)) {
+    C = C->getAggregateElement(i);
+    if (C) {
+      if (isa<UndefValue>(C)) {
+        Result = -1;
+        return true;
+      }
+      if (auto *CI = dyn_cast<ConstantInt>(C)) {
+        Result = CI->getZExtValue();
+        return true;
       }
     }
-    return true;
   }
-  
-  if (const auto *CDS = dyn_cast<ConstantDataSequential>(Mask)) {
-    unsigned V1Size = cast<VectorType>(V1->getType())->getNumElements();
-    for (unsigned i = 0, e = MaskTy->getNumElements(); i != e; ++i)
-      if (CDS->getElementAsInteger(i) >= V1Size*2)
-        return false;
-    return true;
-  }
-  
-  // The bitcode reader can create a place holder for a forward reference
-  // used as the shuffle mask. When this occurs, the shuffle mask will
-  // fall into this case and fail. To avoid this error, do this bit of
-  // ugliness to allow such a mask pass.
-  if (const auto *CE = dyn_cast<ConstantExpr>(Mask))
-    if (CE->getOpcode() == Instruction::UserOp1)
-      return true;
-
   return false;
 }
 
-int ShuffleVectorInst::getMaskValue(Constant *Mask, unsigned i) {
-  assert(i < Mask->getType()->getVectorNumElements() && "Index out of range");
-  if (auto *CDS = dyn_cast<ConstantDataSequential>(Mask))
-    return CDS->getElementAsInteger(i);
-  Constant *C = Mask->getAggregateElement(i);
-  if (isa<UndefValue>(C))
-    return -1;
-  return cast<ConstantInt>(C)->getZExtValue();
+/// getShuffleMask - Return the full mask for this instruction, where each
+/// element is the element number and undef's are returned as -1.
+bool ShuffleVectorInst::getShuffleMask(Value *Mask,
+                                       SmallVectorImpl<int> &Result) {
+  VectorType *VecTy = cast<VectorType>(Mask->getType());
+  if (VecTy->isScalable())
+    return false;
+  unsigned NumElts = VecTy->getVectorNumElements();
+  Result.resize(NumElts);
+  for (unsigned i = 0; i != NumElts; ++i)
+    if (!getMaskValue(Mask, i, Result[i]))
+      return false;
+  return true;
 }
 
-void ShuffleVectorInst::getShuffleMask(Constant *Mask,
-                                       SmallVectorImpl<int> &Result) {
-  unsigned NumElts = Mask->getType()->getVectorNumElements();
-  
-  if (auto *CDS = dyn_cast<ConstantDataSequential>(Mask)) {
-    for (unsigned i = 0; i != NumElts; ++i)
-      Result.push_back(CDS->getElementAsInteger(i));
-    return;
-  }    
-  for (unsigned i = 0; i != NumElts; ++i) {
-    Constant *C = Mask->getAggregateElement(i);
-    Result.push_back(isa<UndefValue>(C) ? -1 :
-                     cast<ConstantInt>(C)->getZExtValue());
+int ShuffleVectorInst::findBroadcastElement(Value *Mask) {
+  int SplatElem = -1;
+  SmallVector<int, 16> MaskElems;
+  if (getShuffleMask(Mask, MaskElems)) {
+    for (unsigned i = 0; i < MaskElems.size(); ++i) {
+      if (SplatElem != -1 && MaskElems[i] != -1 && MaskElems[i] != SplatElem)
+        return -1;
+      if (SplatElem == -1)
+        SplatElem = MaskElems[i];
+    }
   }
+  return SplatElem;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2856,6 +2854,17 @@ bool CastInst::isBitCastable(Type *SrcTy, Type *DestTy) {
   if (SrcTy == DestTy)
     return true;
 
+  bool SrcIsScalable = false;
+  if (VectorType *SrcVecTy = dyn_cast<VectorType>(SrcTy))
+    SrcIsScalable = SrcVecTy->isScalable();
+
+  bool DestIsScalable = false;
+  if (VectorType *DestVecTy = dyn_cast<VectorType>(DestTy))
+    DestIsScalable = DestVecTy->isScalable();
+
+  if (SrcIsScalable != DestIsScalable)
+    return false;
+
   if (VectorType *SrcVecTy = dyn_cast<VectorType>(SrcTy)) {
     if (VectorType *DestVecTy = dyn_cast<VectorType>(DestTy)) {
       if (SrcVecTy->getNumElements() == DestVecTy->getNumElements()) {
@@ -3027,10 +3036,12 @@ CastInst::castIsValid(Instruction::CastOps op, Value *S, Type *DstTy) {
   // If these are vector types, get the lengths of the vectors (using zero for
   // scalar types means that checking that vector lengths match also checks that
   // scalars are not being converted to vectors or vectors to scalars).
-  unsigned SrcLength = SrcTy->isVectorTy() ?
-    cast<VectorType>(SrcTy)->getNumElements() : 0;
-  unsigned DstLength = DstTy->isVectorTy() ?
-    cast<VectorType>(DstTy)->getNumElements() : 0;
+  VectorType::ElementCount SrcLength =
+    SrcTy->isVectorTy() ? cast<VectorType>(SrcTy)->getElementCount()
+                        : VectorType::ElementCount(0, false);
+  VectorType::ElementCount DstLength =
+    DstTy->isVectorTy() ? cast<VectorType>(DstTy)->getElementCount()
+                        : VectorType::ElementCount(0, false);
 
   // Switch on the opcode provided
   switch (op) {
@@ -3062,14 +3073,14 @@ CastInst::castIsValid(Instruction::CastOps op, Value *S, Type *DstTy) {
     if (isa<VectorType>(SrcTy) != isa<VectorType>(DstTy))
       return false;
     if (VectorType *VT = dyn_cast<VectorType>(SrcTy))
-      if (VT->getNumElements() != cast<VectorType>(DstTy)->getNumElements())
+      if (VT->getElementCount() != cast<VectorType>(DstTy)->getElementCount())
         return false;
     return SrcTy->isPtrOrPtrVectorTy() && DstTy->isIntOrIntVectorTy();
   case Instruction::IntToPtr:
     if (isa<VectorType>(SrcTy) != isa<VectorType>(DstTy))
       return false;
     if (VectorType *VT = dyn_cast<VectorType>(SrcTy))
-      if (VT->getNumElements() != cast<VectorType>(DstTy)->getNumElements())
+      if (VT->getElementCount() != cast<VectorType>(DstTy)->getElementCount())
         return false;
     return SrcTy->isIntOrIntVectorTy() && DstTy->isPtrOrPtrVectorTy();
   case Instruction::BitCast: {
@@ -3093,7 +3104,7 @@ CastInst::castIsValid(Instruction::CastOps op, Value *S, Type *DstTy) {
     // A vector of pointers must have the same number of elements.
     if (VectorType *SrcVecTy = dyn_cast<VectorType>(SrcTy)) {
       if (VectorType *DstVecTy = dyn_cast<VectorType>(DstTy))
-        return (SrcVecTy->getNumElements() == DstVecTy->getNumElements());
+        return (SrcVecTy->getElementCount() == DstVecTy->getElementCount());
 
       return false;
     }
@@ -3114,7 +3125,7 @@ CastInst::castIsValid(Instruction::CastOps op, Value *S, Type *DstTy) {
 
     if (VectorType *SrcVecTy = dyn_cast<VectorType>(SrcTy)) {
       if (VectorType *DstVecTy = dyn_cast<VectorType>(DstTy))
-        return (SrcVecTy->getNumElements() == DstVecTy->getNumElements());
+        return (SrcVecTy->getElementCount() == DstVecTy->getElementCount());
 
       return false;
     }

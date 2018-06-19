@@ -1,0 +1,258 @@
+// RUN: llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -mattr=+sve < %s | FileCheck %s
+// RUN: not llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -mattr=-sve 2>&1 < %s | FileCheck --check-prefix=CHECK-ERROR %s
+lastb   s23, p3, z13.s  // 00000101-10100011-10001101-10110111
+// CHECK: lastb   s23, p3, z13.s // encoding: [0xb7,0x8d,0xa3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100011-10001101-10110111
+LASTB   S23, P3, Z13.S  // 00000101-10100011-10001101-10110111
+// CHECK: lastb   s23, p3, z13.s // encoding: [0xb7,0x8d,0xa3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100011-10001101-10110111
+lastb   wzr, p7, z31.h  // 00000101-01100001-10111111-11111111
+// CHECK: lastb   wzr, p7, z31.h // encoding: [0xff,0xbf,0x61,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100001-10111111-11111111
+LASTB   WZR, P7, Z31.H  // 00000101-01100001-10111111-11111111
+// CHECK: lastb   wzr, p7, z31.h // encoding: [0xff,0xbf,0x61,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100001-10111111-11111111
+lastb   d23, p3, z13.d  // 00000101-11100011-10001101-10110111
+// CHECK: lastb   d23, p3, z13.d // encoding: [0xb7,0x8d,0xe3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100011-10001101-10110111
+LASTB   D23, P3, Z13.D  // 00000101-11100011-10001101-10110111
+// CHECK: lastb   d23, p3, z13.d // encoding: [0xb7,0x8d,0xe3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100011-10001101-10110111
+lastb   b21, p5, z10.b  // 00000101-00100011-10010101-01010101
+// CHECK: lastb   b21, p5, z10.b // encoding: [0x55,0x95,0x23,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100011-10010101-01010101
+LASTB   B21, P5, Z10.B  // 00000101-00100011-10010101-01010101
+// CHECK: lastb   b21, p5, z10.b // encoding: [0x55,0x95,0x23,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100011-10010101-01010101
+lastb   w0, p0, z0.s  // 00000101-10100001-10100000-00000000
+// CHECK: lastb   w0, p0, z0.s // encoding: [0x00,0xa0,0xa1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100001-10100000-00000000
+LASTB   W0, P0, Z0.S  // 00000101-10100001-10100000-00000000
+// CHECK: lastb   w0, p0, z0.s // encoding: [0x00,0xa0,0xa1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100001-10100000-00000000
+lastb   w0, p0, z0.h  // 00000101-01100001-10100000-00000000
+// CHECK: lastb   w0, p0, z0.h // encoding: [0x00,0xa0,0x61,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100001-10100000-00000000
+LASTB   W0, P0, Z0.H  // 00000101-01100001-10100000-00000000
+// CHECK: lastb   w0, p0, z0.h // encoding: [0x00,0xa0,0x61,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100001-10100000-00000000
+lastb   h31, p7, z31.h  // 00000101-01100011-10011111-11111111
+// CHECK: lastb   h31, p7, z31.h // encoding: [0xff,0x9f,0x63,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100011-10011111-11111111
+LASTB   H31, P7, Z31.H  // 00000101-01100011-10011111-11111111
+// CHECK: lastb   h31, p7, z31.h // encoding: [0xff,0x9f,0x63,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100011-10011111-11111111
+lastb   x21, p5, z10.d  // 00000101-11100001-10110101-01010101
+// CHECK: lastb   x21, p5, z10.d // encoding: [0x55,0xb5,0xe1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100001-10110101-01010101
+LASTB   X21, P5, Z10.D  // 00000101-11100001-10110101-01010101
+// CHECK: lastb   x21, p5, z10.d // encoding: [0x55,0xb5,0xe1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100001-10110101-01010101
+lastb   h23, p3, z13.h  // 00000101-01100011-10001101-10110111
+// CHECK: lastb   h23, p3, z13.h // encoding: [0xb7,0x8d,0x63,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100011-10001101-10110111
+LASTB   H23, P3, Z13.H  // 00000101-01100011-10001101-10110111
+// CHECK: lastb   h23, p3, z13.h // encoding: [0xb7,0x8d,0x63,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100011-10001101-10110111
+lastb   w23, p3, z13.h  // 00000101-01100001-10101101-10110111
+// CHECK: lastb   w23, p3, z13.h // encoding: [0xb7,0xad,0x61,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100001-10101101-10110111
+LASTB   W23, P3, Z13.H  // 00000101-01100001-10101101-10110111
+// CHECK: lastb   w23, p3, z13.h // encoding: [0xb7,0xad,0x61,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100001-10101101-10110111
+lastb   w21, p5, z10.h  // 00000101-01100001-10110101-01010101
+// CHECK: lastb   w21, p5, z10.h // encoding: [0x55,0xb5,0x61,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100001-10110101-01010101
+LASTB   W21, P5, Z10.H  // 00000101-01100001-10110101-01010101
+// CHECK: lastb   w21, p5, z10.h // encoding: [0x55,0xb5,0x61,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100001-10110101-01010101
+lastb   s21, p5, z10.s  // 00000101-10100011-10010101-01010101
+// CHECK: lastb   s21, p5, z10.s // encoding: [0x55,0x95,0xa3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100011-10010101-01010101
+LASTB   S21, P5, Z10.S  // 00000101-10100011-10010101-01010101
+// CHECK: lastb   s21, p5, z10.s // encoding: [0x55,0x95,0xa3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100011-10010101-01010101
+lastb   h21, p5, z10.h  // 00000101-01100011-10010101-01010101
+// CHECK: lastb   h21, p5, z10.h // encoding: [0x55,0x95,0x63,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100011-10010101-01010101
+LASTB   H21, P5, Z10.H  // 00000101-01100011-10010101-01010101
+// CHECK: lastb   h21, p5, z10.h // encoding: [0x55,0x95,0x63,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100011-10010101-01010101
+lastb   w21, p5, z10.s  // 00000101-10100001-10110101-01010101
+// CHECK: lastb   w21, p5, z10.s // encoding: [0x55,0xb5,0xa1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100001-10110101-01010101
+LASTB   W21, P5, Z10.S  // 00000101-10100001-10110101-01010101
+// CHECK: lastb   w21, p5, z10.s // encoding: [0x55,0xb5,0xa1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100001-10110101-01010101
+lastb   b23, p3, z13.b  // 00000101-00100011-10001101-10110111
+// CHECK: lastb   b23, p3, z13.b // encoding: [0xb7,0x8d,0x23,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100011-10001101-10110111
+LASTB   B23, P3, Z13.B  // 00000101-00100011-10001101-10110111
+// CHECK: lastb   b23, p3, z13.b // encoding: [0xb7,0x8d,0x23,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100011-10001101-10110111
+lastb   d0, p0, z0.d  // 00000101-11100011-10000000-00000000
+// CHECK: lastb   d0, p0, z0.d // encoding: [0x00,0x80,0xe3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100011-10000000-00000000
+LASTB   D0, P0, Z0.D  // 00000101-11100011-10000000-00000000
+// CHECK: lastb   d0, p0, z0.d // encoding: [0x00,0x80,0xe3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100011-10000000-00000000
+lastb   xzr, p7, z31.d  // 00000101-11100001-10111111-11111111
+// CHECK: lastb   xzr, p7, z31.d // encoding: [0xff,0xbf,0xe1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100001-10111111-11111111
+LASTB   XZR, P7, Z31.D  // 00000101-11100001-10111111-11111111
+// CHECK: lastb   xzr, p7, z31.d // encoding: [0xff,0xbf,0xe1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100001-10111111-11111111
+lastb   b0, p0, z0.b  // 00000101-00100011-10000000-00000000
+// CHECK: lastb   b0, p0, z0.b // encoding: [0x00,0x80,0x23,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100011-10000000-00000000
+LASTB   B0, P0, Z0.B  // 00000101-00100011-10000000-00000000
+// CHECK: lastb   b0, p0, z0.b // encoding: [0x00,0x80,0x23,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100011-10000000-00000000
+lastb   w23, p3, z13.b  // 00000101-00100001-10101101-10110111
+// CHECK: lastb   w23, p3, z13.b // encoding: [0xb7,0xad,0x21,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100001-10101101-10110111
+LASTB   W23, P3, Z13.B  // 00000101-00100001-10101101-10110111
+// CHECK: lastb   w23, p3, z13.b // encoding: [0xb7,0xad,0x21,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100001-10101101-10110111
+lastb   d31, p7, z31.d  // 00000101-11100011-10011111-11111111
+// CHECK: lastb   d31, p7, z31.d // encoding: [0xff,0x9f,0xe3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100011-10011111-11111111
+LASTB   D31, P7, Z31.D  // 00000101-11100011-10011111-11111111
+// CHECK: lastb   d31, p7, z31.d // encoding: [0xff,0x9f,0xe3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100011-10011111-11111111
+lastb   wzr, p7, z31.s  // 00000101-10100001-10111111-11111111
+// CHECK: lastb   wzr, p7, z31.s // encoding: [0xff,0xbf,0xa1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100001-10111111-11111111
+LASTB   WZR, P7, Z31.S  // 00000101-10100001-10111111-11111111
+// CHECK: lastb   wzr, p7, z31.s // encoding: [0xff,0xbf,0xa1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100001-10111111-11111111
+lastb   x0, p0, z0.d  // 00000101-11100001-10100000-00000000
+// CHECK: lastb   x0, p0, z0.d // encoding: [0x00,0xa0,0xe1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100001-10100000-00000000
+LASTB   X0, P0, Z0.D  // 00000101-11100001-10100000-00000000
+// CHECK: lastb   x0, p0, z0.d // encoding: [0x00,0xa0,0xe1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100001-10100000-00000000
+lastb   h0, p0, z0.h  // 00000101-01100011-10000000-00000000
+// CHECK: lastb   h0, p0, z0.h // encoding: [0x00,0x80,0x63,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100011-10000000-00000000
+LASTB   H0, P0, Z0.H  // 00000101-01100011-10000000-00000000
+// CHECK: lastb   h0, p0, z0.h // encoding: [0x00,0x80,0x63,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100011-10000000-00000000
+lastb   w21, p5, z10.b  // 00000101-00100001-10110101-01010101
+// CHECK: lastb   w21, p5, z10.b // encoding: [0x55,0xb5,0x21,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100001-10110101-01010101
+LASTB   W21, P5, Z10.B  // 00000101-00100001-10110101-01010101
+// CHECK: lastb   w21, p5, z10.b // encoding: [0x55,0xb5,0x21,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100001-10110101-01010101
+lastb   d21, p5, z10.d  // 00000101-11100011-10010101-01010101
+// CHECK: lastb   d21, p5, z10.d // encoding: [0x55,0x95,0xe3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100011-10010101-01010101
+LASTB   D21, P5, Z10.D  // 00000101-11100011-10010101-01010101
+// CHECK: lastb   d21, p5, z10.d // encoding: [0x55,0x95,0xe3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100011-10010101-01010101
+lastb   s0, p0, z0.s  // 00000101-10100011-10000000-00000000
+// CHECK: lastb   s0, p0, z0.s // encoding: [0x00,0x80,0xa3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100011-10000000-00000000
+LASTB   S0, P0, Z0.S  // 00000101-10100011-10000000-00000000
+// CHECK: lastb   s0, p0, z0.s // encoding: [0x00,0x80,0xa3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100011-10000000-00000000
+lastb   w23, p3, z13.s  // 00000101-10100001-10101101-10110111
+// CHECK: lastb   w23, p3, z13.s // encoding: [0xb7,0xad,0xa1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100001-10101101-10110111
+LASTB   W23, P3, Z13.S  // 00000101-10100001-10101101-10110111
+// CHECK: lastb   w23, p3, z13.s // encoding: [0xb7,0xad,0xa1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100001-10101101-10110111
+lastb   wzr, p7, z31.b  // 00000101-00100001-10111111-11111111
+// CHECK: lastb   wzr, p7, z31.b // encoding: [0xff,0xbf,0x21,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100001-10111111-11111111
+LASTB   WZR, P7, Z31.B  // 00000101-00100001-10111111-11111111
+// CHECK: lastb   wzr, p7, z31.b // encoding: [0xff,0xbf,0x21,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100001-10111111-11111111
+lastb   x23, p3, z13.d  // 00000101-11100001-10101101-10110111
+// CHECK: lastb   x23, p3, z13.d // encoding: [0xb7,0xad,0xe1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100001-10101101-10110111
+LASTB   X23, P3, Z13.D  // 00000101-11100001-10101101-10110111
+// CHECK: lastb   x23, p3, z13.d // encoding: [0xb7,0xad,0xe1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100001-10101101-10110111
+lastb   s31, p7, z31.s  // 00000101-10100011-10011111-11111111
+// CHECK: lastb   s31, p7, z31.s // encoding: [0xff,0x9f,0xa3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100011-10011111-11111111
+LASTB   S31, P7, Z31.S  // 00000101-10100011-10011111-11111111
+// CHECK: lastb   s31, p7, z31.s // encoding: [0xff,0x9f,0xa3,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100011-10011111-11111111
+lastb   w0, p0, z0.b  // 00000101-00100001-10100000-00000000
+// CHECK: lastb   w0, p0, z0.b // encoding: [0x00,0xa0,0x21,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100001-10100000-00000000
+LASTB   W0, P0, Z0.B  // 00000101-00100001-10100000-00000000
+// CHECK: lastb   w0, p0, z0.b // encoding: [0x00,0xa0,0x21,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100001-10100000-00000000
+lastb   b31, p7, z31.b  // 00000101-00100011-10011111-11111111
+// CHECK: lastb   b31, p7, z31.b // encoding: [0xff,0x9f,0x23,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100011-10011111-11111111
+LASTB   B31, P7, Z31.B  // 00000101-00100011-10011111-11111111
+// CHECK: lastb   b31, p7, z31.b // encoding: [0xff,0x9f,0x23,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100011-10011111-11111111

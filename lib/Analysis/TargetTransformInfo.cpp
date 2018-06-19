@@ -307,6 +307,10 @@ unsigned TargetTransformInfo::getRegisterBitWidth(bool Vector) const {
   return TTIImpl->getRegisterBitWidth(Vector);
 }
 
+unsigned TargetTransformInfo::getRegisterBitWidthUpperBound(bool Vector) const {
+  return TTIImpl->getRegisterBitWidthUpperBound(Vector);
+}
+
 unsigned TargetTransformInfo::getMinVectorRegisterBitWidth() const {
   return TTIImpl->getMinVectorRegisterBitWidth();
 }
@@ -319,6 +323,16 @@ bool TargetTransformInfo::shouldConsiderAddressTypePromotion(
 
 unsigned TargetTransformInfo::getCacheLineSize() const {
   return TTIImpl->getCacheLineSize();
+}
+
+llvm::Optional<unsigned> TargetTransformInfo::getCacheSize(CacheLevel Level)
+  const {
+  return TTIImpl->getCacheSize(Level);
+}
+
+llvm::Optional<unsigned> TargetTransformInfo::getCacheAssociativity(
+  CacheLevel Level) const {
+  return TTIImpl->getCacheAssociativity(Level);
 }
 
 unsigned TargetTransformInfo::getPrefetchDistance() const {
@@ -403,6 +417,13 @@ int TargetTransformInfo::getMemoryOpCost(unsigned Opcode, Type *Src,
   int Cost = TTIImpl->getMemoryOpCost(Opcode, Src, Alignment, AddressSpace, I);
   assert(Cost >= 0 && "TTI should not produce negative costs!");
   return Cost;
+}
+
+unsigned TargetTransformInfo::getVectorMemoryOpCost(
+    unsigned Opcode, Type *Src, Value *Ptr, unsigned Alignment,
+    unsigned AddressSpace, const MemAccessInfo &Info, Instruction *I) const {
+  return TTIImpl->getVectorMemoryOpCost(Opcode, Src, Ptr, Alignment,
+                                        AddressSpace, Info, I);
 }
 
 int TargetTransformInfo::getMaskedMemoryOpCost(unsigned Opcode, Type *Src,
@@ -493,6 +514,11 @@ Value *TargetTransformInfo::getOrCreateResultFromMemIntrinsic(
   return TTIImpl->getOrCreateResultFromMemIntrinsic(Inst, ExpectedType);
 }
 
+bool TargetTransformInfo::hasVectorMemoryOp(unsigned Opcode, Type *Ty,
+                                            const MemAccessInfo &Info) const {
+  return TTIImpl->hasVectorMemoryOp(Opcode, Ty, Info);
+}
+
 Type *TargetTransformInfo::getMemcpyLoopLoweringType(LLVMContext &Context,
                                                      Value *Length,
                                                      unsigned SrcAlign,
@@ -515,6 +541,14 @@ bool TargetTransformInfo::useWideIRMemcpyLoopLowering() const {
 bool TargetTransformInfo::areInlineCompatible(const Function *Caller,
                                               const Function *Callee) const {
   return TTIImpl->areInlineCompatible(Caller, Callee);
+}
+
+bool TargetTransformInfo::canVectorizeNonUnitStrides(bool forceFixedWidth) const {
+  return TTIImpl->canVectorizeNonUnitStrides(forceFixedWidth);
+}
+
+bool TargetTransformInfo::vectorizePreventedSLForwarding() const {
+  return TTIImpl->vectorizePreventedSLForwarding();
 }
 
 unsigned TargetTransformInfo::getLoadStoreVecRegBitWidth(unsigned AS) const {
@@ -562,6 +596,11 @@ bool TargetTransformInfo::useReductionIntrinsic(unsigned Opcode,
 
 bool TargetTransformInfo::shouldExpandReduction(const IntrinsicInst *II) const {
   return TTIImpl->shouldExpandReduction(II);
+}
+
+bool TargetTransformInfo::canReduceInVector(unsigned Opcode, Type *ScalarTy,
+                                            ReductionFlags Flags) const {
+  return TTIImpl->canReduceInVector(Opcode, ScalarTy, Flags);
 }
 
 TargetTransformInfo::Concept::~Concept() {}

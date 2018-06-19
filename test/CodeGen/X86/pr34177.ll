@@ -8,38 +8,32 @@ target triple = "x86_64-unknown-linux-gnu"
 define void @test() local_unnamed_addr {
 ; CHECK-LABEL: test:
 ; CHECK:       # BB#0:
-; CHECK-NEXT:    vmovdqa {{.*#+}} xmm0 = [2,3]
-; CHECK-NEXT:    vpextrq $1, %xmm0, %rax
-; CHECK-NEXT:    vmovq %xmm0, %rcx
-; CHECK-NEXT:    negq %rdx
+; CHECK-NEXT:    cmpq $2, %rax
 ; CHECK-NEXT:    fld1
 ; CHECK-NEXT:    fldz
 ; CHECK-NEXT:    fld %st(0)
 ; CHECK-NEXT:    fcmove %st(2), %st(0)
-; CHECK-NEXT:    cmpq %rax, %rcx
+; CHECK-NEXT:    cmpq $3, %rax
 ; CHECK-NEXT:    fld %st(1)
 ; CHECK-NEXT:    fcmove %st(3), %st(0)
-; CHECK-NEXT:    cmpq %rax, %rax
+; CHECK-NEXT:    cmpq $1, %rax
 ; CHECK-NEXT:    fld %st(2)
 ; CHECK-NEXT:    fcmove %st(4), %st(0)
-; CHECK-NEXT:    movl $1, %eax
-; CHECK-NEXT:    cmpq %rax, %rax
+; CHECK-NEXT:    testq %rax, %rax
 ; CHECK-NEXT:    fld %st(3)
 ; CHECK-NEXT:    fcmove %st(5), %st(0)
 ; CHECK-NEXT:    fstp %st(5)
-; CHECK-NEXT:    fxch %st(2)
+; CHECK-NEXT:    fxch %st(4)
 ; CHECK-NEXT:    fadd %st(3)
 ; CHECK-NEXT:    fxch %st(4)
 ; CHECK-NEXT:    fadd %st(3)
-; CHECK-NEXT:    fxch %st(2)
+; CHECK-NEXT:    fxch %st(1)
 ; CHECK-NEXT:    fadd %st(3)
-; CHECK-NEXT:    fxch %st(1)
+; CHECK-NEXT:    fxch %st(2)
 ; CHECK-NEXT:    faddp %st(3)
-; CHECK-NEXT:    fxch %st(3)
+; CHECK-NEXT:    fxch %st(2)
 ; CHECK-NEXT:    fstpt (%rax)
-; CHECK-NEXT:    fxch %st(1)
 ; CHECK-NEXT:    fstpt (%rax)
-; CHECK-NEXT:    fxch %st(1)
 ; CHECK-NEXT:    fstpt (%rax)
 ; CHECK-NEXT:    fstpt (%rax)
   %1 = icmp eq <4 x i64> <i64 0, i64 1, i64 2, i64 3>, undef

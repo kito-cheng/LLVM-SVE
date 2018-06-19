@@ -24,6 +24,7 @@
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/ValueHandle.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -146,7 +147,8 @@ public:
     Instruction *getDestination(const LoopAccessInfo &LAI) const;
 
     /// \brief Dependence types that don't prevent vectorization.
-    static bool isSafeForVectorization(DepType Type);
+    static bool isSafeForVectorization(DepType Type,
+                                     const TargetTransformInfo *TTI);
 
     /// \brief Lexically forward dependence.
     bool isForward() const;
@@ -162,8 +164,9 @@ public:
                const SmallVectorImpl<Instruction *> &Instrs) const;
   };
 
-  MemoryDepChecker(PredicatedScalarEvolution &PSE, const Loop *L)
-      : PSE(PSE), InnermostLoop(L), AccessIdx(0),
+  MemoryDepChecker(PredicatedScalarEvolution &PSE, const Loop *L,
+                   const TargetTransformInfo *TTI)
+      : PSE(PSE), InnermostLoop(L), TTI(TTI), AccessIdx(0),
         ShouldRetryWithRuntimeCheck(false), SafeForVectorization(true),
         RecordDependences(true) {}
 
@@ -185,6 +188,15 @@ public:
     ++AccessIdx;
   }
 
+  /// \brief Register the location (instructions are given increasing numbers)
+  /// of a write access.
+  void addAccess(MemSetInst *MSI) {
+    Value *Ptr = MSI->getRawDest();
+    Accesses[MemAccessInfo(Ptr, false)].push_back(AccessIdx);
+    InstMap.push_back(MSI);
+    ++AccessIdx;
+  }
+
   /// \brief Check whether the dependencies between the accesses are safe.
   ///
   /// Only checks sets with elements in \p CheckDeps.
@@ -198,6 +210,10 @@ public:
   /// \brief The maximum number of bytes of a vector register we can vectorize
   /// the accesses safely with.
   uint64_t getMaxSafeDepDistBytes() { return MaxSafeDepDistBytes; }
+
+  /// \brief the maximum number of bytes we can vectorize without introducing
+  /// issues for hardware store->load forwarding.
+  unsigned getMaxDepDistBytesWithSLF() { return MaxDepDistWithSLF; }
 
   /// \brief In same cases when the dependency check fails we can still
   /// vectorize the loop with a dynamic array access check.
@@ -233,6 +249,10 @@ public:
   SmallVector<Instruction *, 4> getInstructionsForAccess(Value *Ptr,
                                                          bool isWrite) const;
 
+  const SmallVector<Dependence, 2> &getUnsafeDependences() const {
+    return UnsafeDependences;
+  }
+
 private:
   /// A wrapper around ScalarEvolution, used to add runtime SCEV checks, and
   /// applies dynamic knowledge to simplify SCEV expressions and convert them
@@ -242,6 +262,7 @@ private:
   /// that a memory access is strided and doesn't wrap.
   PredicatedScalarEvolution &PSE;
   const Loop *InnermostLoop;
+  const TargetTransformInfo *TTI;
 
   /// \brief Maps access locations (ptr, read/write) to program order.
   DenseMap<MemAccessInfo, std::vector<unsigned> > Accesses;
@@ -254,6 +275,10 @@ private:
 
   // We can access this many bytes in parallel safely.
   uint64_t MaxSafeDepDistBytes;
+
+  // Maximum safe VF which should not introduce problems for h/w store->load
+  // forwarding.
+  unsigned MaxDepDistWithSLF;
 
   /// \brief If we see a non-constant dependence distance we can still try to
   /// vectorize this loop with runtime checks.
@@ -271,6 +296,11 @@ private:
   /// \brief Memory dependences collected during the analysis.  Only valid if
   /// RecordDependences is true.
   SmallVector<Dependence, 8> Dependences;
+
+  /// Unsafe memory dependences collected during the analysis
+  //
+  // Used by for OptRemark generation
+  SmallVector<Dependence, 2> UnsafeDependences;
 
   /// \brief Check whether there is a plausible dependence between the two
   /// accesses.
@@ -327,7 +357,8 @@ public:
           AliasSetId(AliasSetId), Expr(Expr) {}
   };
 
-  RuntimePointerChecking(ScalarEvolution *SE) : Need(false), SE(SE) {}
+  RuntimePointerChecking(ScalarEvolution *SE) : Need(false), Strided(false),
+                                                SE(SE) {}
 
   /// Reset the state of the pointer runtime information.
   void reset() {
@@ -416,6 +447,9 @@ public:
   /// This flag indicates if we need to add the runtime check.
   bool Need;
 
+  /// This flag indicates if the pointer accesses are strided.
+  bool Strided;
+
   /// Information about the pointers that may require checking.
   SmallVector<PointerInfo, 2> Pointers;
 
@@ -482,12 +516,26 @@ private:
 /// PSE must be emitted in order for the results of this analysis to be valid.
 class LoopAccessInfo {
 public:
+  /// Reasons why memory accesses cannot be vectorized (used for OptRemarks)
+  enum class FailureReason {
+    UnsafeDataDependence,
+    UnsafeDataDependenceTriedRT,
+    UnknownArrayBounds,
+    Unknown
+  };
+public:
   LoopAccessInfo(Loop *L, ScalarEvolution *SE, const TargetLibraryInfo *TLI,
-                 AliasAnalysis *AA, DominatorTree *DT, LoopInfo *LI);
+                 const TargetTransformInfo *TTI, AliasAnalysis *AA,
+                 DominatorTree *DT, LoopInfo *LI);
 
   /// Return true we can analyze the memory accesses in the loop and there are
   /// no memory dependence cycles.
   bool canVectorizeMemory() const { return CanVecMem; }
+
+  /// Return reason describing why memory access cannot be vectorized.
+  //
+  // Used for the OptRemark generation.
+  FailureReason getFailureReason() const { return FailReason; }
 
   const RuntimePointerChecking *getRuntimePointerChecking() const {
     return PtrRtChecking.get();
@@ -507,7 +555,7 @@ public:
   /// Returns true if the value V is uniform within the loop.
   bool isUniform(Value *V) const;
 
-  uint64_t getMaxSafeDepDistBytes() const { return MaxSafeDepDistBytes; }
+  uint64_t getMaxSafeDepDistBytes() const;
   unsigned getNumStores() const { return NumStores; }
   unsigned getNumLoads() const { return NumLoads;}
 
@@ -558,7 +606,15 @@ public:
   /// If the loop has any store to invariant address, then it returns true,
   /// else returns false.
   bool hasStoreToLoopInvariantAddress() const {
-    return StoreToLoopInvariantAddress;
+    return !InvariantStores.empty();
+  }
+
+  const SmallVectorImpl<StoreInst*> &getInvariantStores() const {
+    return InvariantStores;
+  }
+
+  const SmallPtrSet<Value*, 4> &getUncomputablePtrs() const {
+    return UncomputablePtrs;
   }
 
   /// Used to add runtime SCEV checks. Simplifies SCEV expressions and converts
@@ -602,18 +658,21 @@ private:
   std::unique_ptr<MemoryDepChecker> DepChecker;
 
   Loop *TheLoop;
+  const TargetTransformInfo *TTI;
 
   unsigned NumLoads;
   unsigned NumStores;
 
   uint64_t MaxSafeDepDistBytes;
+  uint64_t MaxDepDistBytesWithSLF;
 
   /// \brief Cache the result of analyzeLoop.
   bool CanVecMem;
 
-  /// \brief Indicator for storing to uniform addresses.
-  /// If a loop has write to a loop invariant address then it should be true.
-  bool StoreToLoopInvariantAddress;
+  /// \brief List of stores to uniform addresses.
+  SmallVector<StoreInst*, 5> InvariantStores;
+  /// \brief List of stores to uniform addresses.
+  SmallVector<MemSetInst*, 5> InvariantMemSets;
 
   /// \brief The diagnostics report generated for the analysis.  E.g. why we
   /// couldn't analyze the loop.
@@ -625,6 +684,14 @@ private:
 
   /// \brief Set of symbolic strides values.
   SmallPtrSet<Value *, 8> StrideSet;
+
+  /// Reason why memory accesses cannot be vectorized (used for OptRemarks)
+  FailureReason FailReason;
+
+  /// Set of uncomputable pointers.
+  //
+  // Used when emitting OptRemarks
+  SmallPtrSet<Value*, 4> UncomputablePtrs;
 };
 
 Value *stripIntegerCast(Value *V);
@@ -701,6 +768,7 @@ private:
   // The used analysis passes.
   ScalarEvolution *SE;
   const TargetLibraryInfo *TLI;
+  const TargetTransformInfo *TTI;
   AliasAnalysis *AA;
   DominatorTree *DT;
   LoopInfo *LI;

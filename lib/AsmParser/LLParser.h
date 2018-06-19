@@ -54,7 +54,9 @@ namespace llvm {
       t_Constant,                      // Value in ConstantVal.
       t_InlineAsm,                     // Value in FTy/StrVal/StrVal2/UIntVal.
       t_ConstantStruct,                // Value in ConstantStructElts.
-      t_PackedConstantStruct           // Value in ConstantStructElts.
+      t_PackedConstantStruct,          // Value in ConstantStructElts.
+      t_StepVector,                    // No value.
+      t_VScale                         // No value.
     } Kind = t_LocalID;
 
     LLLexer::LocTy Loc;

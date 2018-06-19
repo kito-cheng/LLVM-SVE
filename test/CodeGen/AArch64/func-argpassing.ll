@@ -99,7 +99,7 @@ define [2 x i64] @return_struct() {
 ; CHECK: add x[[VARSTRUCT:[0-9]+]], {{x[0-9]+}}, :lo12:varstruct
 ; CHECK: ldp x0, x1, [x[[VARSTRUCT]]]
     ; Make sure epilogue immediately follows
-; CHECK-NEXT: ret
+; CHECK: ret
 }
 
 ; Large structs are passed by reference (storage allocated by caller

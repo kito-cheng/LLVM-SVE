@@ -1,4 +1,5 @@
 // RUN: llvm-mc -triple aarch64-none-linux-gnu -mattr=+neon -show-encoding < %s | FileCheck %s
+// RUN: llvm-mc -triple aarch64-none-linux-gnu -mattr=+neon,+sve -show-encoding < %s | FileCheck %s
 
 //------------------------------------------------------------------------------
 // Scalar Integer Saturating Add (Signed)

@@ -1,8 +1,8 @@
 ; RUN: llvm-as < %s | llvm-dis | llvm-as | llvm-dis | FileCheck %s
 ; RUN: verify-uselistorder %s
 
-; CHECK: !named = !{!0, !0, !1, !2, !3, !4, !5, !6, !7, !8, !8, !9, !10, !11, !12, !13, !14, !15, !16, !17, !18, !19, !20, !21, !22, !23, !24, !25, !26, !27, !27, !28, !29, !30, !31, !32, !33, !33}
-!named = !{!0, !1, !2, !3, !4, !5, !6, !7, !8, !9, !10, !11, !12, !13, !14, !15, !16, !17, !18, !19, !20, !21, !22, !23, !24, !25, !26, !27, !28, !29, !30, !31, !32, !33, !34, !35, !36, !37}
+; CHECK: !named = !{!0, !0, !1, !2, !3, !4, !5, !6, !7, !8, !8, !9, !10, !11, !12, !13, !14, !15, !16, !17, !18, !19, !20, !21, !22, !23, !24, !25, !26, !27, !27, !28, !29, !30, !31, !32, !33, !33, !34, !34, !35}
+!named = !{!0, !1, !2, !3, !4, !5, !6, !7, !8, !9, !10, !11, !12, !13, !14, !15, !16, !17, !18, !19, !20, !21, !22, !23, !24, !25, !26, !27, !28, !29, !30, !31, !32, !33, !34, !35, !36, !37, !39, !41, !43}
 
 ; CHECK:      !0 = !DISubrange(count: 3)
 ; CHECK-NEXT: !1 = !DISubrange(count: 3, lowerBound: 4)
@@ -85,3 +85,12 @@
 !35 = !DIFile(filename: "file", directory: "dir", checksumkind: CSK_MD5, checksum: "000102030405060708090a0b0c0d0e0f")
 !36 = !DIFile(filename: "file", directory: "dir", checksumkind: CSK_None)
 !37 = !DIFile(filename: "file", directory: "dir", checksumkind: CSK_None, checksum: "")
+
+; CHECK-NEXT: !34 = !DISubrange(count: !DIExpression(DW_OP_constu, 42), lowerBound: 4)
+; CHECK-NEXT: !35 = !DISubrange(count: !DIExpression(DW_OP_constu, 1)
+!38 = !DIExpression(DW_OP_constu, 42)
+!39 = !DISubrange(count: !38, lowerBound: 4)
+!40 = !DIExpression(DW_OP_constu, 42)
+!41 = !DISubrange(count: !40, lowerBound: 4)
+!42 = !DIExpression(DW_OP_constu, 1)
+!43 = !DISubrange(count: !42, lowerBound: 0)

@@ -326,13 +326,24 @@ void AArch64AsmBackend::relaxInstruction(const MCInst &Inst,
 }
 
 bool AArch64AsmBackend::writeNopData(uint64_t Count, MCObjectWriter *OW) const {
+  bool Aligned = (Count % 4) == 0;
+
   // If the count is not 4-byte aligned, we must be writing data into the text
   // section (otherwise we have unaligned instructions, and thus have far
   // bigger problems), so just write zeros instead.
   OW->WriteZeros(Count % 4);
 
-  // We are properly aligned, so write NOPs as requested.
+  // We are properly aligned and can start talking in terms of instructions.
   Count /= 4;
+
+  // Plant a branch rather than NOPs when the former is cheaper. The upper limit
+  // guards against Count being beyond the branch range (however unlikely).
+  if (Aligned && (Count > 1) && (Count <= 128)) {
+    OW->write32(0x14000000 + Count);
+    --Count;
+  }
+
+  // Fill the remain space with NOPs.
   for (uint64_t i = 0; i != Count; ++i)
     OW->write32(0xd503201f);
   return true;

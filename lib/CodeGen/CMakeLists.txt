@@ -34,10 +34,12 @@ add_llvm_library(LLVMCodeGen
   GlobalMerge.cpp
   IfConversion.cpp
   ImplicitNullChecks.cpp
+  InitStackRegions.cpp
   IndirectBrExpandPass.cpp
   InlineSpiller.cpp
   InterferenceCache.cpp
   InterleavedAccessPass.cpp
+  InterleavedGatherScatterPass.cpp
   IntrinsicLowering.cpp
   LatencyPriorityQueue.cpp
   LazyMachineBlockFrequencyInfo.cpp

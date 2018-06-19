@@ -1137,8 +1137,7 @@ define <8 x double> @load_one_mask_bit_set5(<8 x double>* %addr, <8 x double> %v
 ; AVX-LABEL: load_one_mask_bit_set5:
 ; AVX:       ## BB#0:
 ; AVX-NEXT:    vextractf128 $1, %ymm1, %xmm2
-; AVX-NEXT:    vmovsd {{.*#+}} xmm3 = mem[0],zero
-; AVX-NEXT:    vunpcklpd {{.*#+}} xmm2 = xmm2[0],xmm3[0]
+; AVX-NEXT:    vmovhpd {{.*#+}} xmm2 = xmm2[0],mem[0]
 ; AVX-NEXT:    vinsertf128 $1, %xmm2, %ymm1, %ymm1
 ; AVX-NEXT:    retq
 ;
@@ -1172,4 +1171,3 @@ declare void @llvm.masked.store.v8f64.p0v8f64(<8 x double>, <8 x double>*, i32, 
 declare void @llvm.masked.store.v4f64.p0v4f64(<4 x double>, <4 x double>*, i32, <4 x i1>)
 declare void @llvm.masked.store.v2f64.p0v2f64(<2 x double>, <2 x double>*, i32, <2 x i1>)
 declare void @llvm.masked.store.v2i64.p0v2i64(<2 x i64>, <2 x i64>*, i32, <2 x i1>)
-

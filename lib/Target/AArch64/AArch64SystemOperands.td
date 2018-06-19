@@ -51,6 +51,23 @@ def : AT<"S1E1WP", 0b000, 0b0111, 0b1001, 0b001>;
 }
 
 //===----------------------------------------------------------------------===//
+// Named FP Immediates
+//===----------------------------------------------------------------------===//
+class NamedFPImm<string name, string repr, bits<4> enum > : SearchableTable {
+  let SearchableFields = ["Enum", "Repr"];
+  let EnumValueField = "Enum";
+
+  string Name = name;
+  bits<4> Enum = enum;
+  string Repr = repr;
+}
+
+def : NamedFPImm<"zero", "0.0", 0x0>;
+def : NamedFPImm<"half", "0.5", 0x1>;
+def : NamedFPImm<"one",  "1.0", 0x2>;
+def : NamedFPImm<"two",  "2.0", 0x3>;
+
+//===----------------------------------------------------------------------===//
 // DMB/DSB (data barrier) instruction options.
 //===----------------------------------------------------------------------===//
 
@@ -175,6 +192,63 @@ def : PRFM<"pstl3keep", 0x14>;
 def : PRFM<"pstl3strm", 0x15>;
 
 //===----------------------------------------------------------------------===//
+// SVE Prefetch instruction options
+//===----------------------------------------------------------------------===//
+
+class SVEPRFM<string name, bits<4> encoding> : SearchableTable {
+  let SearchableFields = ["Name", "Encoding"];
+  let EnumValueField = "Encoding";
+
+  string Name = name;
+  bits<4> Encoding;
+  let Encoding = encoding;
+}
+
+def : SVEPRFM<"pldl1keep", 0x00>;
+def : SVEPRFM<"pldl1strm", 0x01>;
+def : SVEPRFM<"pldl2keep", 0x02>;
+def : SVEPRFM<"pldl2strm", 0x03>;
+def : SVEPRFM<"pldl3keep", 0x04>;
+def : SVEPRFM<"pldl3strm", 0x05>;
+def : SVEPRFM<"pstl1keep", 0x08>;
+def : SVEPRFM<"pstl1strm", 0x09>;
+def : SVEPRFM<"pstl2keep", 0x0a>;
+def : SVEPRFM<"pstl2strm", 0x0b>;
+def : SVEPRFM<"pstl3keep", 0x0c>;
+def : SVEPRFM<"pstl3strm", 0x0d>;
+
+//===----------------------------------------------------------------------===//
+// SVE Predicate patterns
+//===----------------------------------------------------------------------===//
+
+class SVEPREDPAT<string name, bits<5> encoding> : SearchableTable {
+  let SearchableFields = ["Name", "Encoding"];
+  let EnumValueField = "Encoding";
+
+  string Name = name;
+  bits<5> Encoding;
+  let Encoding = encoding;
+}
+
+def : SVEPREDPAT<"pow2",  0x00>;
+def : SVEPREDPAT<"vl1",   0x01>;
+def : SVEPREDPAT<"vl2",   0x02>;
+def : SVEPREDPAT<"vl3",   0x03>;
+def : SVEPREDPAT<"vl4",   0x04>;
+def : SVEPREDPAT<"vl5",   0x05>;
+def : SVEPREDPAT<"vl6",   0x06>;
+def : SVEPREDPAT<"vl7",   0x07>;
+def : SVEPREDPAT<"vl8",   0x08>;
+def : SVEPREDPAT<"vl16",  0x09>;
+def : SVEPREDPAT<"vl32",  0x0a>;
+def : SVEPREDPAT<"vl64",  0x0b>;
+def : SVEPREDPAT<"vl128", 0x0c>;
+def : SVEPREDPAT<"vl256", 0x0d>;
+def : SVEPREDPAT<"mul4",  0x1d>;
+def : SVEPREDPAT<"mul3",  0x1e>;
+def : SVEPREDPAT<"all",   0x1f>;
+
+//===----------------------------------------------------------------------===//
 // PState instruction options.
 //===----------------------------------------------------------------------===//
 
@@ -264,7 +338,6 @@ def : TLBI<"VALE2",        0b100, 0b1000, 0b0111, 0b101>;
 def : TLBI<"VALE3",        0b110, 0b1000, 0b0111, 0b101>;
 def : TLBI<"VMALLS12E1",   0b100, 0b1000, 0b0111, 0b110, 0>;
 def : TLBI<"VAALE1",       0b000, 0b1000, 0b0111, 0b111>;
-
 
 //===----------------------------------------------------------------------===//
 // MRS/MSR (system register read/write) instruction options.
@@ -426,6 +499,12 @@ def : ROSysReg<"LORID_EL1",  0b11, 0b000, 0b1010, 0b0100, 0b111>;
 let Requires = [{ {AArch64::FeatureRAS} }] in {
 def : ROSysReg<"ERRIDR_EL1", 0b11, 0b000, 0b0101, 0b0011, 0b000>;
 def : ROSysReg<"ERXFR_EL1",  0b11, 0b000, 0b0101, 0b0100, 0b000>;
+}
+
+// SVE control registers
+//                                Op0   Op1    CRn     CRm     Op2
+let Requires = [{ {AArch64::FeatureSVE} }] in {
+def : ROSysReg<"ID_AA64ZFR0_EL1", 0b11, 0b000, 0b0000, 0b0100, 0b100>;
 }
 
 //===----------------------
@@ -1014,6 +1093,15 @@ def : RWSysReg<"ERXMISC1_EL1",  0b11, 0b000, 0b0101, 0b0101, 0b001>;
 def : RWSysReg<"DISR_EL1",      0b11, 0b000, 0b1100, 0b0001, 0b001>;
 def : RWSysReg<"VDISR_EL2",     0b11, 0b100, 0b1100, 0b0001, 0b001>;
 def : RWSysReg<"VSESR_EL2",     0b11, 0b100, 0b0101, 0b0010, 0b011>;
+}
+
+// SVE control registers
+//                         Op0   Op1    CRn     CRm     Op2    
+let Requires = [{ {AArch64::FeatureSVE} }] in {
+def : RWSysReg<"ZCR_EL1",  0b11, 0b000, 0b0001, 0b0010, 0b000>;
+def : RWSysReg<"ZCR_EL2",  0b11, 0b100, 0b0001, 0b0010, 0b000>;
+def : RWSysReg<"ZCR_EL3",  0b11, 0b110, 0b0001, 0b0010, 0b000>;
+def : RWSysReg<"ZCR_EL12", 0b11, 0b101, 0b0001, 0b0010, 0b000>;
 }
 
 // Cyclone specific system registers

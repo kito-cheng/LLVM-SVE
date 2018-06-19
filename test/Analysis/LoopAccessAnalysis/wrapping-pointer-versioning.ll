@@ -129,6 +129,7 @@ for.end:                                          ; preds = %for.body
 ; We have added the nusw flag to turn this expression into the following SCEV:
 ;     i64 {zext i32 (2 * (trunc i64 %N to i32)) to i64,+,-2}<%for.body>
 
+
 ; LAA: [PSE]  %arrayidxA = getelementptr i16, i16* %a, i64 %mul_ext:
 ; LAA-NEXT: ((2 * (zext i32 {(2 * (trunc i64 %N to i32)),+,-2}<%for.body> to i64)) + %a)
 ; LAA-NEXT: --> {((2 * (zext i32 (2 * (trunc i64 %N to i32)) to i64)) + %a),+,-4}<%for.body>

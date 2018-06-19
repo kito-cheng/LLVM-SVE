@@ -1433,7 +1433,8 @@ namespace llvm {
     X86MaskedGatherSDNode(unsigned Order,
                           const DebugLoc &dl, SDVTList VTs, EVT MemVT,
                           MachineMemOperand *MMO)
-      : MaskedGatherScatterSDNode(X86ISD::MGATHER, Order, dl, VTs, MemVT, MMO)
+      : MaskedGatherScatterSDNode(X86ISD::MGATHER, Order, dl, VTs, MemVT, MMO,
+                                  ISD::SIGNED_SCALED)
     {}
     static bool classof(const SDNode *N) {
       return N->getOpcode() == X86ISD::MGATHER;

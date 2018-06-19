@@ -30,6 +30,7 @@ namespace llvm {
 class LoadInst;
 class StoreInst;
 class VAArgInst;
+class IntrinsicInst;
 class MemSetInst;
 class AliasSetTracker;
 class AliasSet;
@@ -205,6 +206,7 @@ public:
   iterator begin() const { return iterator(PtrList); }
   iterator end()   const { return iterator(); }
   bool empty() const { return PtrList == nullptr; }
+  unsigned getRefCount() const { return RefCount; }
 
   // Unfortunately, ilist::size() is linear, so we have to add code to keep
   // track of the list's exact size.
@@ -356,6 +358,7 @@ public:
   void add(LoadInst *LI);
   void add(StoreInst *SI);
   void add(VAArgInst *VAAI);
+  void add(IntrinsicInst *I, bool IsWrite);
   void add(MemSetInst *MSI);
   void add(MemTransferInst *MTI);
   void add(Instruction *I);       // Dispatch to one of the other add methods...

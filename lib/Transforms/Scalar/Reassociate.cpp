@@ -1982,6 +1982,59 @@ Instruction *ReassociatePass::canonicalizeNegConstExpr(Instruction *I) {
   return NI;
 }
 
+/// Returns whether the operator BO is an operand to a GEP instruction and
+/// is foldable as a SCEV. Reassociation may lose the (non-)wrapping
+/// flags causing the SCEV not to fold. During vectorisation the SCEV
+/// representation is more important. Instcombine also does reassociation
+/// and will likely pick up any remaining cases.
+static bool isSCEVableGEPOperand(const BinaryOperator *BO) {
+  unsigned Opcode = BO->getOpcode();
+  if (!(Opcode == Instruction::Add || Opcode == Instruction::Mul))
+    return false;
+
+  if (!BO->hasNoSignedWrap())
+    return false;
+
+  // Create two buffers and two pointers to these buffers.
+  // We'll take a double-buffering approach, since we cannot
+  // change the array while iterating over it.
+  SmallVector<const Value*, 5> Users, Buffer;
+  SmallVectorImpl<const Value*> *UsersPtr = &Users;
+  SmallVectorImpl<const Value*> *BufferPtr = &Buffer;
+
+  // Fill Users buffer with users of the operation
+  Users.append(BO->user_begin(), BO->user_end());
+
+  // Add cast operations to 'Buffer' for futher processing
+  while (!UsersPtr->empty()) {
+    // Process all users in buffer
+    for (const Value *U : (*UsersPtr)) {
+      if (auto *C = dyn_cast<CastInst>(U)) {
+        BufferPtr->append(C->user_begin(), C->user_end());
+        continue;
+      }
+
+      // Preserving NSW flags is more important than reassociation.
+      if (auto *BO = dyn_cast<BinaryOperator>(U)) {
+        unsigned Opc = BO->getOpcode();
+        if ((Opc == Instruction::Add) || (Opc == Instruction::Sub))
+          if (BO->hasNoSignedWrap()) {
+            BufferPtr->append(U->user_begin(), U->user_end());
+            continue;
+          }
+      }
+
+      if (!isa<GetElementPtrInst>(U))
+        return false;
+    }
+    // Swap buffers
+    std::swap(UsersPtr, BufferPtr);
+    BufferPtr->clear();
+  }
+
+  return true;
+}
+
 /// Inspect and optimize the given instruction. Note that erasing
 /// instructions is not allowed.
 void ReassociatePass::OptimizeInst(Instruction *I) {
@@ -2093,6 +2146,11 @@ void ReassociatePass::OptimizeInst(Instruction *I) {
       RedoInsts.insert(BO->user_back());
     return;
   }
+
+  // Do not reassociate if this expression will lose nsw flags when
+  // reassocating, destroying SCEV folding opportunities.
+  if (isSCEVableGEPOperand(BO))
+    return;
 
   // If this is an add tree that is used by a sub instruction, ignore it
   // until we process the subtract.

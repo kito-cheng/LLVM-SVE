@@ -1,0 +1,4 @@
+RUN: rm -f %t*; ARM_INSIGHTS_DUMP_FILE=%t llvm-lit -q %S/.. > /dev/null; cat %t | sort | uniq | FileCheck -allow-empty %s
+CHECK-NOT: UNMAPPED
+
+XFAIL: *

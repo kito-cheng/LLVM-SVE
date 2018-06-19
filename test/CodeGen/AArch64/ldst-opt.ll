@@ -1358,7 +1358,7 @@ define void @merge_zr32_2(i32* %p) {
 ; NOSTRICTALIGN-NEXT: stp xzr, xzr, [x{{[0-9]+}}]
 ; STRICTALIGN-NEXT: stp wzr, wzr, [x{{[0-9]+}}]
 ; STRICTALIGN-NEXT: stp wzr, wzr, [x{{[0-9]+}}, #8]
-; CHECK-NEXT: ret
+; CHECK: ret
 entry:
   store i32 0, i32* %p
   %p1 = getelementptr i32, i32* %p, i32 1
@@ -1379,7 +1379,7 @@ define void @merge_zr32_2_offset(i32* %p) {
 ; STRICTALIGN-NEXT: str wzr, [x{{[0-9]+}}, #508]
 ; STRICTALIGN-NEXT: str wzr, [x{{[0-9]+}}, #512]
 ; STRICTALIGN-NEXT: str wzr, [x{{[0-9]+}}, #516]
-; CHECK-NEXT: ret
+; CHECK: ret
 entry:
   %p0 = getelementptr i32, i32* %p, i32 126
   store i32 0, i32* %p0
@@ -1455,7 +1455,7 @@ define void @merge_zr32_2vec(<2 x i32>* %p) {
 ; CHECK: // %entry
 ; NOSTRICTALIGN-NEXT: str xzr, [x{{[0-9]+}}]
 ; STRICTALIGN-NEXT: stp wzr, wzr, [x{{[0-9]+}}]
-; CHECK-NEXT: ret
+; CHECK: ret
 entry:
   store <2 x i32> zeroinitializer, <2 x i32>* %p
   ret void
@@ -1482,7 +1482,7 @@ define void @merge_zr32_4vec(<4 x i32>* %p) {
 ; NOSTRICTALIGN-NEXT: stp xzr, xzr, [x{{[0-9]+}}]
 ; STRICTALIGN-NEXT: stp wzr, wzr, [x{{[0-9]+}}]
 ; STRICTALIGN-NEXT: stp wzr, wzr, [x{{[0-9]+}}, #8]
-; CHECK-NEXT: ret
+; CHECK: ret
 entry:
   store <4 x i32> zeroinitializer, <4 x i32>* %p
   ret void
@@ -1494,7 +1494,7 @@ define void @merge_zr32_2vecf(<2 x float>* %p) {
 ; CHECK: // %entry
 ; NOSTRICTALIGN-NEXT: str xzr, [x{{[0-9]+}}]
 ; STRICTALIGN-NEXT: stp wzr, wzr, [x{{[0-9]+}}]
-; CHECK-NEXT: ret
+; CHECK: ret
 entry:
   store <2 x float> zeroinitializer, <2 x float>* %p
   ret void
@@ -1507,7 +1507,7 @@ define void @merge_zr32_4vecf(<4 x float>* %p) {
 ; NOSTRICTALIGN-NEXT: stp xzr, xzr, [x{{[0-9]+}}]
 ; STRICTALIGN-NEXT: stp wzr, wzr, [x{{[0-9]+}}]
 ; STRICTALIGN-NEXT: stp wzr, wzr, [x{{[0-9]+}}, #8]
-; CHECK-NEXT: ret
+; CHECK: ret
 entry:
   store <4 x float> zeroinitializer, <4 x float>* %p
   ret void

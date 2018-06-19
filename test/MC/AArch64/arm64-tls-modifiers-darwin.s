@@ -1,5 +1,7 @@
 ; RUN: llvm-mc -triple=arm64-apple-ios7.0 %s -o - | FileCheck %s
 ; RUN: llvm-mc -triple=arm64-apple-ios7.0 -filetype=obj %s -o - | llvm-objdump -r - | FileCheck %s --check-prefix=CHECK-OBJ
+; RUN: llvm-mc -triple=arm64-apple-ios7.0 -mattr=+sve %s -o - | FileCheck %s
+; RUN: llvm-mc -triple=arm64-apple-ios7.0 -mattr=+sve -filetype=obj %s -o - | llvm-objdump -r - | FileCheck %s --check-prefix=CHECK-OBJ
 
         adrp x2, _var@TLVPPAGE
         ldr x0, [x15, _var@TLVPPAGEOFF]

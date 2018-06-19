@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=arm64-apple-ios -mcpu=cyclone < %s | FileCheck %s
+; RUN: llc -mtriple=arm64-apple-ios -aarch64-sve-postvec=false -mcpu=cyclone < %s | FileCheck %s
 ; Do not generate redundant select in early if-converstion pass. 
 
 define i32 @foo(i32 %a, i32 %b)  {

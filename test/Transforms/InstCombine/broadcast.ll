@@ -38,9 +38,9 @@ define <4 x float> @good3(float %arg) {
 }
 
 ; CHECK-LABEL: good4
-; CHECK: %[[INS:.*]] = insertelement <4 x float> undef, float %arg, i32 0
-; CHECK-NEXT: %[[ADD:.*]] = fadd <4 x float> %[[INS]], %[[INS]]
-; CHECK-NEXT: %[[BCAST:.*]] = shufflevector <4 x float> %[[ADD]], <4 x float> undef, <4 x i32> zeroinitializer
+; CHECK: %[[INS:.*]] = insertelement <4 x float> undef, float %{{.*}}, i32 0
+; CHECK-NOT: %{{[0-9]+}} = insertelement
+; CHECK-NEXT: %[[BCAST:.*]] = shufflevector <4 x float> %{{[0-9]+}}, <4 x float> undef, <4 x i32> zeroinitializer
 ; CHECK-NEXT: ret <4 x float> %[[BCAST]]
 define <4 x float> @good4(float %arg) {
   %tmp = insertelement <4 x float> zeroinitializer, float %arg, i32 0

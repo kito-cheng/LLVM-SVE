@@ -5484,18 +5484,6 @@ bool CodeGenPrepare::optimizeSelectInst(SelectInst *SI) {
   return true;
 }
 
-static bool isBroadcastShuffle(ShuffleVectorInst *SVI) {
-  SmallVector<int, 16> Mask(SVI->getShuffleMask());
-  int SplatElem = -1;
-  for (unsigned i = 0; i < Mask.size(); ++i) {
-    if (SplatElem != -1 && Mask[i] != -1 && Mask[i] != SplatElem)
-      return false;
-    SplatElem = Mask[i];
-  }
-
-  return true;
-}
-
 /// Some targets have expensive vector shifts if the lanes aren't all the same
 /// (e.g. x86 only introduced "vpsllvd" and friends with AVX2). In these cases
 /// it's often worth sinking a shufflevector splat down to its use so that
@@ -5509,7 +5497,7 @@ bool CodeGenPrepare::optimizeShuffleVectorInst(ShuffleVectorInst *SVI) {
 
   // We only expect better codegen by sinking a shuffle if we can recognise a
   // constant splat.
-  if (!isBroadcastShuffle(SVI))
+  if (SVI->findBroadcastElement() < 0)
     return false;
 
   // InsertedShuffles - Only insert a shuffle in each block once.
@@ -5745,13 +5733,14 @@ class VectorPromoteHelper {
         UseSplat = true;
     }
 
-    unsigned End = getTransitionType()->getVectorNumElements();
+    auto EC = cast<VectorType>(getTransitionType())->getElementCount();
     if (UseSplat)
-      return ConstantVector::getSplat(End, Val);
+      return ConstantVector::getSplat(EC, Val);
 
     SmallVector<Constant *, 4> ConstVec;
     UndefValue *UndefVal = UndefValue::get(Val->getType());
-    for (unsigned Idx = 0; Idx != End; ++Idx) {
+
+    for (unsigned Idx = 0; Idx != EC.Min; ++Idx) {
       if (Idx == ExtractIdx)
         ConstVec.push_back(Val);
       else

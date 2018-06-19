@@ -37,6 +37,7 @@ enum Kind {
   exclaim, // !
   bar,     // |
 
+  kw_n,
   kw_x,
   kw_true,
   kw_false,
@@ -69,9 +70,12 @@ enum Kind {
   kw_initialexec,
   kw_localexec,
   kw_zeroinitializer,
+  kw_stepvector,
   kw_undef,
+  kw_vscale,
   kw_null,
   kw_none,
+  kw_as,
   kw_to,
   kw_caller,
   kw_within,
@@ -133,6 +137,7 @@ enum Kind {
   kw_arm_apcscc,
   kw_arm_aapcscc,
   kw_arm_aapcs_vfpcc,
+  kw_aarch64_vector_pcs,
   kw_msp430_intrcc,
   kw_avr_intrcc,
   kw_avr_signalcc,

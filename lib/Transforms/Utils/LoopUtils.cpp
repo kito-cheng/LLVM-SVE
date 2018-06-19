@@ -37,6 +37,19 @@ using namespace llvm::PatternMatch;
 
 #define DEBUG_TYPE "loop-utils"
 
+static const char* RecurrenceNames[] = {
+  "RK_NoReduction",
+  "RK_IntegerAdd",
+  "RK_IntegerMult",
+  "RK_IntegerOr",
+  "RK_IntegerAnd",
+  "RK_IntegerXor",
+  "RK_IntegerMinMax",
+  "RK_FloatAdd",
+  "RK_FloatMult",
+  "RK_FloatMinMax"
+};
+
 bool RecurrenceDescriptor::areAllUsesIn(Instruction *I,
                                         SmallPtrSetImpl<Instruction *> &Set) {
   for (User::op_iterator Use = I->op_begin(), E = I->op_end(); Use != E; ++Use)
@@ -162,8 +175,53 @@ bool RecurrenceDescriptor::getSourceExtensionKind(
   return true;
 }
 
+// Check if a given Phi node can be recognized as an ordered reduction for
+// vectorizing floating point operations without unsafe math.
+static bool
+checkOrderedReduction(RecurrenceDescriptor::RecurrenceKind Kind,
+                      Instruction *Exit, PHINode *Phi) {
+  // Currently only 'fadd' is supported.
+  if (Kind != RecurrenceDescriptor::RK_FloatAdd)
+    return false;
+
+  bool IsOrdered = Exit->getOpcode() == Instruction::FAdd &&
+                  !Exit->hasUnsafeAlgebra();
+
+  // If this comes from a PHI node, look through it
+  if (auto EIP = dyn_cast<PHINode>(Exit)) {
+    if (EIP->getNumIncomingValues() != 2)
+      return false;
+
+    auto ChainVal = EIP->getIncomingValue(0) == Phi
+                        ? EIP->getIncomingValue(1)
+                        : EIP->getIncomingValue(0);
+
+    if (!isa<Instruction>(ChainVal))
+      return false;
+
+    Exit = cast<Instruction>(ChainVal);
+    IsOrdered = Exit->getOpcode() == Instruction::FAdd &&
+               !Exit->hasUnsafeAlgebra();
+  }
+
+  // The only pattern accepted is the one in which the reduction PHI is used
+  // as one of the operands of the exit istruction.
+  auto LHS = Exit->getOperand(0);
+  auto RHS = Exit->getOperand(1);
+  IsOrdered = IsOrdered && ((LHS == Phi) || (RHS == Phi));
+
+  if (!IsOrdered)
+    return false;
+
+  DEBUG(dbgs() << "LU: Found an ordered reduction: Phi: "
+        << *Phi << ", ExitInst: " << *Exit << "\n");
+
+  return true;
+}
+
 bool RecurrenceDescriptor::AddReductionVar(PHINode *Phi, RecurrenceKind Kind,
                                            Loop *TheLoop, bool HasFunNoNaNAttr,
+                                           ScalarEvolution *SE,
                                            RecurrenceDescriptor &RedDes) {
   if (Phi->getNumIncomingValues() != 2)
     return false;
@@ -181,6 +239,8 @@ bool RecurrenceDescriptor::AddReductionVar(PHINode *Phi, RecurrenceKind Kind,
   // This includes users of the reduction, variables (which form a cycle
   // which ends in the phi node).
   Instruction *ExitInstruction = nullptr;
+
+  StoreInst* IntermediateStore = nullptr;
   // Indicates that we found a reduction operation in our scan.
   bool FoundReduxOp = false;
 
@@ -242,42 +302,86 @@ bool RecurrenceDescriptor::AddReductionVar(PHINode *Phi, RecurrenceKind Kind,
     Instruction *Cur = Worklist.back();
     Worklist.pop_back();
 
+    // Store instructions are allowed iff it is the store of the reduction
+    // value to the same loop uniform memory location.
+    if (auto *SI = dyn_cast<StoreInst>(Cur)) {
+      const SCEV *PtrScev = SE->getSCEV(SI->getPointerOperand());
+      // Check it is the same address as previous stores
+      if (IntermediateStore) {
+        const SCEV *OtherScev =
+            SE->getSCEV(IntermediateStore->getPointerOperand());
+
+        if (OtherScev != PtrScev) {
+          DEBUG(dbgs() << "Storing reduction value to different addresses " <<
+               "inside the loop: " << *SI->getPointerOperand() << " and " <<
+               *IntermediateStore->getPointerOperand() << '\n');
+          return false;
+        }
+      }
+
+      // Check the pointer is loop invariant
+      if (!SE->isLoopInvariant(PtrScev, TheLoop)) {
+        DEBUG(dbgs() << "Storing reduction value to non-uniform address " <<
+              "inside the loop: " << *SI->getPointerOperand() << '\n');
+        return false;
+      }
+
+      // IntermediateStore is always the last store in the loop.
+      IntermediateStore = SI;
+      continue;
+    }
+
     // No Users.
     // If the instruction has no users then this is a broken chain and can't be
     // a reduction variable.
-    if (Cur->use_empty())
+    if (Cur->use_empty()) {
+      DEBUG(dbgs() << "LU: Instruction has no users: " << *Cur << "\n");
       return false;
+    }
 
     bool IsAPhi = isa<PHINode>(Cur);
 
     // A header PHI use other than the original PHI.
-    if (Cur != Phi && IsAPhi && Cur->getParent() == Phi->getParent())
+    if (Cur != Phi && IsAPhi && Cur->getParent() == Phi->getParent()) {
+      DEBUG(dbgs() << "LU: loop header phi that isn't the original phi: " <<
+            *Cur << "\n");
       return false;
+    }
 
     // Reductions of instructions such as Div, and Sub is only possible if the
     // LHS is the reduction variable.
     if (!Cur->isCommutative() && !IsAPhi && !isa<SelectInst>(Cur) &&
         !isa<ICmpInst>(Cur) && !isa<FCmpInst>(Cur) &&
-        !VisitedInsts.count(dyn_cast<Instruction>(Cur->getOperand(0))))
+        !VisitedInsts.count(dyn_cast<Instruction>(Cur->getOperand(0)))) {
+      DEBUG(dbgs() << "LU: LHS isn't the reduction var: " << *Cur << "\n");
       return false;
+    }
 
     // Any reduction instruction must be of one of the allowed kinds. We ignore
     // the starting value (the Phi or an AND instruction if the Phi has been
     // type-promoted).
     if (Cur != Start) {
       ReduxDesc = isRecurrenceInstr(Cur, Kind, ReduxDesc, HasFunNoNaNAttr);
-      if (!ReduxDesc.isRecurrence())
+      if (!ReduxDesc.isRecurrence()) {
+        DEBUG(dbgs() << "LU: Not an allowed instruction: " <<
+              *Cur << " for recurrence type " << RecurrenceNames[Kind] << "\n");
         return false;
+      }
     }
 
     // A reduction operation must only have one use of the reduction value.
     if (!IsAPhi && Kind != RK_IntegerMinMax && Kind != RK_FloatMinMax &&
-        hasMultipleUsesOf(Cur, VisitedInsts))
+        hasMultipleUsesOf(Cur, VisitedInsts)) {
+      DEBUG(dbgs() << "LU: Too many uses of reduction value: " << *Cur << "\n");
       return false;
+    }
 
     // All inputs to a PHI node must be a reduction value.
-    if (IsAPhi && Cur != Phi && !areAllUsesIn(Cur, VisitedInsts))
+    if (IsAPhi && Cur != Phi && !areAllUsesIn(Cur, VisitedInsts)) {
+      DEBUG(dbgs() << "LU: All input must be a reduction value: " <<
+            *Cur << "\n");
       return false;
+    }
 
     if (Kind == RK_IntegerMinMax &&
         (isa<ICmpInst>(Cur) || isa<SelectInst>(Cur)))
@@ -328,8 +432,13 @@ bool RecurrenceDescriptor::AddReductionVar(PHINode *Phi, RecurrenceKind Kind,
       if (VisitedInsts.insert(UI).second) {
         if (isa<PHINode>(UI))
           PHIs.push_back(UI);
-        else
+        else {
+          if (auto *SI = dyn_cast<StoreInst>(UI)) {
+            if (SI->getValueOperand() == Cur)
+              NonPHIs.push_back(UI);
+          } else
           NonPHIs.push_back(UI);
+        }
       } else if (!isa<PHINode>(UI) &&
                  ((!isa<FCmpInst>(UI) && !isa<ICmpInst>(UI) &&
                    !isa<SelectInst>(UI)) ||
@@ -350,8 +459,30 @@ bool RecurrenceDescriptor::AddReductionVar(PHINode *Phi, RecurrenceKind Kind,
       NumCmpSelectPatternInst != 2)
     return false;
 
-  if (!FoundStartPHI || !FoundReduxOp || !ExitInstruction)
+  // If there is an intermediate store, it must store the last reduction value.
+  if (IntermediateStore) {
+    if (IntermediateStore->getValueOperand() != ExitInstruction) {
+      DEBUG(dbgs() << "LU: Last store Instruction of reduction value " <<
+            "does not store last calculated value of the reduction: " <<
+            *IntermediateStore << '\n');
+      return false;
+    }
+  }
+
+  // If all uses are inside the loop (intermediate stores), then the
+  // reduction value after the loop will be the one used in the last store.
+  if (!ExitInstruction && IntermediateStore) {
+    auto *ExitValue =
+        cast<Instruction>(IntermediateStore->getValueOperand());
+    ExitInstruction = ExitValue;
+  }
+
+  if (!FoundStartPHI || !FoundReduxOp || !ExitInstruction) {
+    DEBUG(dbgs() << "LU: Did not find one of: StartPHI: " <<
+          FoundStartPHI << ", ReduxOp: " << FoundReduxOp <<
+          ", ExitInstruction: " << *ExitInstruction << "\n");
     return false;
+  }
 
   // If we think Phi may have been type-promoted, we also need to ensure that
   // all source operands of the reduction are either SExtInsts or ZEstInsts. If
@@ -361,6 +492,9 @@ bool RecurrenceDescriptor::AddReductionVar(PHINode *Phi, RecurrenceKind Kind,
                                 IsSigned, VisitedInsts, CastInsts))
       return false;
 
+  // Special handling for ordered reductions
+  const bool IsOrdered = checkOrderedReduction(Kind, ExitInstruction, Phi);
+
   // We found a reduction var if we have reached the original phi node and we
   // only have a single instruction with out-of-loop users.
 
@@ -368,9 +502,10 @@ bool RecurrenceDescriptor::AddReductionVar(PHINode *Phi, RecurrenceKind Kind,
   // is saved as part of the RecurrenceDescriptor.
 
   // Save the description of this reduction variable.
-  RecurrenceDescriptor RD(
-      RdxStart, ExitInstruction, Kind, ReduxDesc.getMinMaxKind(),
-      ReduxDesc.getUnsafeAlgebraInst(), RecurrenceType, IsSigned, CastInsts);
+  RecurrenceDescriptor RD(RdxStart, ExitInstruction, IntermediateStore, Kind,
+                          ReduxDesc.getMinMaxKind(),
+                          ReduxDesc.getUnsafeAlgebraInst(), RecurrenceType,
+                          IsSigned, CastInsts, IsOrdered);
   RedDes = RD;
 
   return true;
@@ -431,6 +566,17 @@ RecurrenceDescriptor::InstDesc
 RecurrenceDescriptor::isRecurrenceInstr(Instruction *I, RecurrenceKind Kind,
                                         InstDesc &Prev, bool HasFunNoNaNAttr) {
   bool FP = I->getType()->isFloatingPointTy();
+  bool FastMath = FP && I->hasUnsafeAlgebra();
+  auto Opc = I->getOpcode();
+
+  // Explicitly note lack of fastmath when debugging vectorization
+  if (FP && !FastMath && (Opc == Instruction::FMul ||
+                          Opc == Instruction::FAdd ||
+                          Opc == Instruction::FSub))
+    DEBUG(dbgs() <<
+          "LU: Warning! Fastmath not set on fp reduction instruction: "
+          << *I << "\n");
+
   Instruction *UAI = Prev.getUnsafeAlgebraInst();
   if (!UAI && FP && !I->hasUnsafeAlgebra())
     UAI = I; // Found an unsafe (unvectorizable) algebra instruction.
@@ -480,6 +626,7 @@ bool RecurrenceDescriptor::hasMultipleUsesOf(
   return false;
 }
 bool RecurrenceDescriptor::isReductionPHI(PHINode *Phi, Loop *TheLoop,
+                                          ScalarEvolution *SE,
                                           RecurrenceDescriptor &RedDes) {
 
   BasicBlock *Header = TheLoop->getHeader();
@@ -487,44 +634,53 @@ bool RecurrenceDescriptor::isReductionPHI(PHINode *Phi, Loop *TheLoop,
   bool HasFunNoNaNAttr =
       F.getFnAttribute("no-nans-fp-math").getValueAsString() == "true";
 
-  if (AddReductionVar(Phi, RK_IntegerAdd, TheLoop, HasFunNoNaNAttr, RedDes)) {
+  if (AddReductionVar(Phi, RK_IntegerAdd, TheLoop, HasFunNoNaNAttr, SE,
+                      RedDes)) {
     DEBUG(dbgs() << "Found an ADD reduction PHI." << *Phi << "\n");
     return true;
   }
-  if (AddReductionVar(Phi, RK_IntegerMult, TheLoop, HasFunNoNaNAttr, RedDes)) {
+  if (AddReductionVar(Phi, RK_IntegerMult, TheLoop, HasFunNoNaNAttr, SE,
+                      RedDes)) {
     DEBUG(dbgs() << "Found a MUL reduction PHI." << *Phi << "\n");
     return true;
   }
-  if (AddReductionVar(Phi, RK_IntegerOr, TheLoop, HasFunNoNaNAttr, RedDes)) {
+  if (AddReductionVar(Phi, RK_IntegerOr, TheLoop, HasFunNoNaNAttr, SE,
+                      RedDes)) {
     DEBUG(dbgs() << "Found an OR reduction PHI." << *Phi << "\n");
     return true;
   }
-  if (AddReductionVar(Phi, RK_IntegerAnd, TheLoop, HasFunNoNaNAttr, RedDes)) {
+  if (AddReductionVar(Phi, RK_IntegerAnd, TheLoop, HasFunNoNaNAttr, SE,
+                      RedDes)) {
     DEBUG(dbgs() << "Found an AND reduction PHI." << *Phi << "\n");
     return true;
   }
-  if (AddReductionVar(Phi, RK_IntegerXor, TheLoop, HasFunNoNaNAttr, RedDes)) {
+  if (AddReductionVar(Phi, RK_IntegerXor, TheLoop, HasFunNoNaNAttr, SE,
+                      RedDes)) {
     DEBUG(dbgs() << "Found a XOR reduction PHI." << *Phi << "\n");
     return true;
   }
   if (AddReductionVar(Phi, RK_IntegerMinMax, TheLoop, HasFunNoNaNAttr,
-                      RedDes)) {
+                      SE, RedDes)) {
     DEBUG(dbgs() << "Found a MINMAX reduction PHI." << *Phi << "\n");
     return true;
   }
-  if (AddReductionVar(Phi, RK_FloatMult, TheLoop, HasFunNoNaNAttr, RedDes)) {
+  if (AddReductionVar(Phi, RK_FloatMult, TheLoop, HasFunNoNaNAttr, SE,
+                      RedDes)) {
     DEBUG(dbgs() << "Found an FMult reduction PHI." << *Phi << "\n");
     return true;
   }
-  if (AddReductionVar(Phi, RK_FloatAdd, TheLoop, HasFunNoNaNAttr, RedDes)) {
+  if (AddReductionVar(Phi, RK_FloatAdd, TheLoop, HasFunNoNaNAttr, SE,
+                      RedDes)) {
     DEBUG(dbgs() << "Found an FAdd reduction PHI." << *Phi << "\n");
     return true;
   }
-  if (AddReductionVar(Phi, RK_FloatMinMax, TheLoop, HasFunNoNaNAttr, RedDes)) {
+  if (AddReductionVar(Phi, RK_FloatMinMax, TheLoop, HasFunNoNaNAttr, SE,
+                      RedDes)) {
     DEBUG(dbgs() << "Found an float MINMAX reduction PHI." << *Phi << "\n");
     return true;
   }
   // Not a reduction of known type.
+  DEBUG(dbgs() << "Not a known reduction type: " << *Phi << "\n");
   return false;
 }
 
@@ -583,6 +739,7 @@ bool RecurrenceDescriptor::isFirstOrderRecurrence(
 /// the operation K.
 Constant *RecurrenceDescriptor::getRecurrenceIdentity(RecurrenceKind K,
                                                       Type *Tp) {
+  assert(Tp && "Missing type");
   switch (K) {
   case RK_IntegerXor:
   case RK_IntegerAdd:
@@ -763,6 +920,11 @@ Value *InductionDescriptor::transform(IRBuilder<> &B, Value *Index,
             InductionBinOp->getOpcode() == Instruction::FSub) &&
            "Original bin op should be defined for FP induction");
 
+    if (!Index->getType()->isFloatingPointTy()) {
+      // We need to do some conversion.
+      Index = B.CreateUIToFP(Index, StartValue->getType());
+    }
+
     Value *StepValue = cast<SCEVUnknown>(Step)->getValue();
 
     // Floating point operations had to be 'fast' to enable the induction.
@@ -886,7 +1048,7 @@ bool InductionDescriptor::isInductionPHI(PHINode *Phi, const Loop *TheLoop,
   const SCEVAddRecExpr *AR = dyn_cast<SCEVAddRecExpr>(PhiScev);
 
   if (!AR) {
-    DEBUG(dbgs() << "LV: PHI is not a poly recurrence.\n");
+    DEBUG(dbgs() << "LU: PHI is not a poly recurrence.\n");
     return false;
   }
 
@@ -1255,7 +1417,6 @@ Value *llvm::createSimpleTargetReduction(
   std::function<Value*()> BuildFunc;
   using RD = RecurrenceDescriptor;
   RD::MinMaxRecurrenceKind MinMaxKind = RD::MRK_Invalid;
-  // TODO: Support creating ordered reductions.
   FastMathFlags FMFUnsafe;
   FMFUnsafe.setUnsafeAlgebra();
 
@@ -1325,7 +1486,6 @@ Value *llvm::createTargetReduction(IRBuilder<> &Builder,
                                    const TargetTransformInfo *TTI,
                                    RecurrenceDescriptor &Desc, Value *Src,
                                    bool NoNaN) {
-  // TODO: Support in-order reductions based on the recurrence descriptor.
   RecurrenceDescriptor::RecurrenceKind RecKind = Desc.getRecurrenceKind();
   TargetTransformInfo::ReductionFlags Flags;
   Flags.NoNaN = NoNaN;
@@ -1375,6 +1535,37 @@ Value *llvm::createTargetReduction(IRBuilder<> &Builder,
     llvm_unreachable("Unhandled RecKind");
   }
 }
+
+Value *llvm::createOrderedReduction(IRBuilder<> &Builder,
+                                    RecurrenceDescriptor &Desc, Value *Src,
+                                    Value *Start, Value *Predicate) {
+  assert(Desc.isOrdered() && "Recurrence must be an ordered kind");
+  auto Kind = Desc.getRecurrenceKind();
+  assert((Kind == RecurrenceDescriptor::RK_FloatAdd ||
+          Kind == RecurrenceDescriptor::RK_FloatMult) &&
+         "Unknown reduction kind");
+  assert(Src->getType()->isVectorTy() && "Expected a vector type");
+  assert(!Start->getType()->isVectorTy() && "Expected a scalar type");
+
+  std::function<Value*(Value*, Value*)> CreateRdx;
+  // Predication is done by masking out the inactive elements of the vector
+  // source with a safe identity value.
+  switch (Kind) {
+  default:
+    llvm_unreachable("Unknown reduction kind");
+  case RecurrenceDescriptor::RK_FloatAdd: {
+    auto *MaskedVec = Builder.CreateSelect(
+        Predicate, Src, ConstantFP::get(Src->getType(), 0.0));
+    return Builder.CreateFAddReduce(Start, MaskedVec);
+  }
+  case RecurrenceDescriptor::RK_FloatMult: {
+    auto *MaskedVec = Builder.CreateSelect(
+        Predicate, Src, ConstantFP::get(Src->getType(), 1.0));
+    return Builder.CreateFMulReduce(Start, MaskedVec);
+  }
+  }
+}
+  
 
 void llvm::propagateIRFlags(Value *I, ArrayRef<Value *> VL, Value *OpValue) {
   auto *VecOp = dyn_cast<Instruction>(I);

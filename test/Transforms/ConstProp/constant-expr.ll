@@ -109,3 +109,6 @@
                i32 10, i32 20),
             i32 30)
 ; CHECK: select = internal constant i32 select {{.*}} i32 10, i32 30
+
+@stepvector = constant <4 x i32> stepvector
+; CHECK: @stepvector = constant <4 x i32> <i32 0, i32 1, i32 2, i32 3>

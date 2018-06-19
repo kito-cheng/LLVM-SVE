@@ -149,3 +149,9 @@ define <2 x i8> @not_lshr_const_splat(<2 x i8> %x) {
   ret <2 x i8> %not
 }
 
+define <n x 4 x i1> @test8(<n x 4 x i32> %A, <n x 4 x i32> %B) {
+        %cond = icmp sle <n x 4 x i32> %A, %B
+        %Ret = xor <n x 4 x i1> %cond, shufflevector (<n x 4 x i1> insertelement (<n x 4 x i1> undef, i1 true, i32 0), <n x 4 x i1> undef, <n x 4 x i32> zeroinitializer)
+        ret <n x 4 x i1> %Ret
+}
+

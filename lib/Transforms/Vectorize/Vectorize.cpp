@@ -27,6 +27,8 @@ using namespace llvm;
 /// Vectorization library.
 void llvm::initializeVectorization(PassRegistry &Registry) {
   initializeLoopVectorizePass(Registry);
+  initializeSVELoopVectorizePass(Registry);
+  initializeBOSCCPass(Registry);
   initializeSLPVectorizerPass(Registry);
   initializeLoadStoreVectorizerPass(Registry);
 }

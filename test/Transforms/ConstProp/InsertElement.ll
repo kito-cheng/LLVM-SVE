@@ -30,3 +30,11 @@ define <4 x i64> @insertelement_undef() {
   ; CHECK: ret <4 x i64> undef
   ret <4 x i64> %vec5
 }
+
+; When the vector length is unknown all indicies become valid.
+; CHECK-LABEL: @insertelement_unknown_vl
+define <n x 4 x i64> @insertelement_unknown_vl() {
+  ; CHECK: ret <n x 4 x i64> insertelement (<n x 4 x i64> zeroinitializer, i64 1, i64 5)
+  %vec1 = insertelement <n x 4 x i64> zeroinitializer, i64 1, i64 5
+  ret <n x 4 x i64> %vec1
+}

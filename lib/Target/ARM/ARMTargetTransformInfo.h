@@ -124,6 +124,10 @@ public:
     return 32;
   }
 
+  unsigned getRegisterBitWidthUpperBound(bool Vector) {
+    return getRegisterBitWidth(Vector);
+  }
+
   unsigned getMaxInterleaveFactor(unsigned VF) {
     return ST->getMaxInterleaveFactor();
   }

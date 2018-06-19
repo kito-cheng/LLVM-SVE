@@ -363,7 +363,9 @@ bool CallAnalyzer::visitAlloca(AllocaInst &I) {
   // Check whether inlining will turn a dynamic alloca into a static
   // alloca and handle that case.
   if (I.isArrayAllocation()) {
-    Constant *Size = SimplifiedValues.lookup(I.getArraySize());
+    auto *Size = I.getArraySize();
+    if (!isa<ConstantInt>(Size))
+      Size = SimplifiedValues.lookup(Size);
     if (auto *AllocSize = dyn_cast_or_null<ConstantInt>(Size)) {
       Type *Ty = I.getAllocatedType();
       AllocatedSize = SaturatingMultiplyAdd(

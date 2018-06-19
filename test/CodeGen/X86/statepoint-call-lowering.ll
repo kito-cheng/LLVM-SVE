@@ -71,8 +71,8 @@ define %struct @test_struct_return() gc "statepoint-example" {
 ; CHECK: popq %rcx
 ; CHECK: retq
 entry:
-  %safepoint_token = tail call token (i64, i32, %struct ()*, i32, i32, ...) @llvm.experimental.gc.statepoint.p0f_structf(i64 0, i32 0, %struct ()* @return_struct, i32 0, i32 0, i32 0, i32 0)
-  %call1 = call %struct @llvm.experimental.gc.result.struct(token %safepoint_token)
+  %safepoint_token = tail call token (i64, i32, %struct ()*, i32, i32, ...) @llvm.experimental.gc.statepoint.p0f_s_structsf(i64 0, i32 0, %struct ()* @return_struct, i32 0, i32 0, i32 0, i32 0)
+  %call1 = call %struct @llvm.experimental.gc.result.s_structs(token %safepoint_token)
   ret %struct %call1
 }
 
@@ -152,8 +152,8 @@ declare i32* @llvm.experimental.gc.result.p0i32(token)
 declare token @llvm.experimental.gc.statepoint.p0f_f32f(i64, i32, float ()*, i32, i32, ...)
 declare float @llvm.experimental.gc.result.f32(token)
 
-declare token @llvm.experimental.gc.statepoint.p0f_structf(i64, i32, %struct ()*, i32, i32, ...)
-declare %struct @llvm.experimental.gc.result.struct(token)
+declare token @llvm.experimental.gc.statepoint.p0f_s_structsf(i64, i32, %struct ()*, i32, i32, ...)
+declare %struct @llvm.experimental.gc.result.s_structs(token)
 
 declare token @llvm.experimental.gc.statepoint.p0f_isVoidi32varargf(i64, i32, void (i32, ...)*, i32, i32, ...)
 

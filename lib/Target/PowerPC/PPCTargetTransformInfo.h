@@ -65,6 +65,9 @@ public:
   bool enableInterleavedAccessVectorization();
   unsigned getNumberOfRegisters(bool Vector);
   unsigned getRegisterBitWidth(bool Vector) const;
+  unsigned getRegisterBitWidthUpperBound(bool Vector) {
+    return getRegisterBitWidth(Vector);
+  }
   unsigned getCacheLineSize();
   unsigned getPrefetchDistance();
   unsigned getMaxInterleaveFactor(unsigned VF);

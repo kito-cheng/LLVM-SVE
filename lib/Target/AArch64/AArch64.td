@@ -122,6 +122,10 @@ def FeatureUseRSqrt : SubtargetFeature<
     "use-reciprocal-square-root", "UseRSqrt", "true",
     "Use the reciprocal square root approximation">;
 
+def FeatureIterativeReciprocal : SubtargetFeature<
+    "use-iterative-reciprocal", "UseIterativeReciprocal", "true",
+    "Use the iterative reciprocal approximation">;
+
 def FeatureNoNegativeImmediates : SubtargetFeature<"no-neg-immediates",
                                         "NegativeImmediates", "false",
                                         "Convert immediates and instructions "
@@ -132,6 +136,10 @@ def FeatureNoNegativeImmediates : SubtargetFeature<"no-neg-immediates",
 def FeatureLSLFast : SubtargetFeature<
     "lsl-fast", "HasLSLFast", "true",
     "CPU has a fastpath logical shift of up to 3 places">;
+def FeatureDotProd : SubtargetFeature<
+    "dotprod", "HasDotProd", "true",
+    "Enable dot product support">;
+
 //===----------------------------------------------------------------------===//
 // Architectures.
 //
@@ -401,12 +409,14 @@ def GenericAsmParserVariant : AsmParserVariant {
   int Variant = 0;
   string Name = "generic";
   string BreakCharacters = ".";
+  string TokenizingCharacters = "[]*!/";
 }
 
 def AppleAsmParserVariant : AsmParserVariant {
   int Variant = 1;
   string Name = "apple-neon";
   string BreakCharacters = ".";
+  string TokenizingCharacters = "[]*!/";
 }
 
 //===----------------------------------------------------------------------===//

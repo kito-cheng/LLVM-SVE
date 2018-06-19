@@ -1,0 +1,28 @@
+# RUN: llc -mtriple=aarch64-none-linux-gnu -mattr=+sve -run-pass initstackregion,greedy -verify-machineinstrs  -o - %s | FileCheck %s
+--- |
+  define <n x 2 x double> @test_subreg_spill_fold(double %val) {
+    %1 = insertelement <n x 2 x double> undef, double %val, i32 0
+    ; Spill %1
+    %2 = shufflevector <n x 2 x double> %1, <n x 2 x double> undef, <n x 2 x i32> zeroinitializer
+    ret <n x 2 x double> %2
+  }
+...
+---
+# CHECK-LABEL: name: test_subreg_spill_fold
+# Ensure that the spilled subreg COPY is eliminated and folded into the spill store
+name:            test_subreg_spill_fold
+tracksRegLiveness: true
+registers:
+  - { id: 0, class: zpr }
+  - { id: 1, class: zpr }
+body:             |
+  bb.0:
+    liveins: %d0
+
+    ; CHECK: STR_ZXI %z0, %stack.0, 0 :: (store 16 into %stack.0)
+    undef %0.dsub = COPY %d0
+    INLINEASM $nop, 1, 12, implicit-def dead %d0, 12, implicit-def dead %d1, 12, implicit-def dead %d2, 12, implicit-def dead %d3, 12, implicit-def dead %d4, 12, implicit-def dead %d5, 12, implicit-def dead %d6, 12, implicit-def dead %d7, 12, implicit-def dead %d8, 12, implicit-def dead %d9, 12, implicit-def dead %d10, 12, implicit-def dead %d11, 12, implicit-def dead %d12, 12, implicit-def dead %d13, 12, implicit-def dead %d14, 12, implicit-def dead %d15, 12, implicit-def dead %d16, 12, implicit-def dead %d17, 12, implicit-def dead %d18, 12, implicit-def dead %d19, 12, implicit-def dead %d20, 12, implicit-def dead %d21, 12, implicit-def dead %d22, 12, implicit-def dead %d23, 12, implicit-def dead %d24, 12, implicit-def dead %d25, 12, implicit-def dead %d26, 12, implicit-def dead %d27, 12, implicit-def dead %d28, 12, implicit-def dead %d29, 12, implicit-def dead %d30, 12, implicit-def %d31
+    %1 = DUP_ZZI_D %0, 0
+    %z0 = COPY %1
+    RET_ReallyLR implicit %z0
+...

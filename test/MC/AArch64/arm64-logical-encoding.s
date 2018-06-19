@@ -1,4 +1,5 @@
 ; RUN: llvm-mc -triple arm64-apple-darwin -show-encoding < %s | FileCheck %s
+; RUN: llvm-mc -triple arm64-apple-darwin -mattr=+sve -show-encoding < %s | FileCheck %s
 
 foo:
 ;==---------------------------------------------------------------------------==

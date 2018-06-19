@@ -31,7 +31,6 @@
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/MC/MCDwarf.h"
-#include "llvm/MC/MachineLocation.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Target/TargetOptions.h"
 #include <memory>
@@ -199,6 +198,8 @@ struct SymbolCU {
   DwarfCompileUnit *CU;
 };
 
+class DummyDwarfExpression;
+
 /// Collects and handles dwarf debug information.
 class DwarfDebug : public DebugHandlerBase {
   /// All DIEValues are allocated through this allocator.
@@ -287,6 +288,8 @@ class DwarfDebug : public DebugHandlerBase {
   /// True iff there are multiple CUs in this module.
   bool SingleCU;
   bool IsDarwin;
+
+  DenseMap<const DIVariable*,const DIType*> VariableInDependentType;
 
   AddressPool AddrPool;
 
@@ -447,6 +450,9 @@ class DwarfDebug : public DebugHandlerBase {
   /// Collect variable information from the side table maintained by MF.
   void collectVariableInfoFromMFTable(DwarfCompileUnit &TheCU,
                                       DenseSet<InlinedVariable> &P);
+
+  /// Clear dependent type tracking map
+  void clearDependentTracking() { VariableInDependentType.clear(); }
 
 protected:
   /// Gather pre-function debug information.

@@ -418,7 +418,7 @@
 
         @ Bad CPS instruction format.
         cps f,#1
-@ CHECK-ERRORS: error: immediate operand must be in the range [0,31]
+@ CHECK-ERRORS: error: invalid operand for instruction
 @ CHECK-ERRORS:         cps f,#1
 @ CHECK-ERRORS:               ^
 

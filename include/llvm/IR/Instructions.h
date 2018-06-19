@@ -28,6 +28,7 @@
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constant.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InstrTypes.h"
@@ -1007,12 +1008,14 @@ public:
     // Vector GEP
     if (Ptr->getType()->isVectorTy()) {
       unsigned NumElem = Ptr->getType()->getVectorNumElements();
-      return VectorType::get(PtrTy, NumElem);
+      bool Scalable = Ptr->getType()->getVectorIsScalable();
+      return VectorType::get(PtrTy, NumElem, Scalable);
     }
     for (Value *Index : IdxList)
       if (Index->getType()->isVectorTy()) {
         unsigned NumElem = Index->getType()->getVectorNumElements();
-        return VectorType::get(PtrTy, NumElem);
+        bool Scalable = Index->getType()->getVectorIsScalable();
+        return VectorType::get(PtrTy, NumElem, Scalable);
       }
     // Scalar GEP
     return PtrTy;
@@ -2213,7 +2216,7 @@ protected:
 public:
   ShuffleVectorInst(Value *V1, Value *V2, Value *Mask,
                     const Twine &NameStr = "",
-                    Instruction *InsertBefor = nullptr);
+                    Instruction *InsertBefore = nullptr);
   ShuffleVectorInst(Value *V1, Value *V2, Value *Mask,
                     const Twine &NameStr, BasicBlock *InsertAtEnd);
 
@@ -2236,35 +2239,32 @@ public:
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
 
-  Constant *getMask() const {
-    return cast<Constant>(getOperand(2));
+  Value *getMask() const {
+    return getOperand(2);
   }
 
-  /// Return the shuffle mask value for the specified element of the mask.
-  /// Return -1 if the element is undef.
-  static int getMaskValue(Constant *Mask, unsigned Elt);
+  /// getMaskValue - Return the index from the shuffle mask for the specified
+  /// output result.  This is either -1 if the element is undef or a number less
+  /// than 2*numelements.
+  static bool getMaskValue(Value *Mask, unsigned Elt, int &Result);
 
-  /// Return the shuffle mask value of this instruction for the given element
-  /// index. Return -1 if the element is undef.
-  int getMaskValue(unsigned Elt) const {
-    return getMaskValue(getMask(), Elt);
+  bool getMaskValue(unsigned i, int &Result) const {
+    return getMaskValue(getMask(), i, Result);
   }
 
-  /// Convert the input shuffle mask operand to a vector of integers. Undefined
-  /// elements of the mask are returned as -1.
-  static void getShuffleMask(Constant *Mask, SmallVectorImpl<int> &Result);
+  /// getShuffleMask - Return the full mask for this instruction, where each
+  /// element is the element number and undef's are returned as -1.
+  static bool getShuffleMask(Value *Mask, SmallVectorImpl<int> &Result);
 
-  /// Return the mask for this instruction as a vector of integers. Undefined
-  /// elements of the mask are returned as -1.
-  void getShuffleMask(SmallVectorImpl<int> &Result) const {
+  bool getShuffleMask(SmallVectorImpl<int> &Result) const {
     return getShuffleMask(getMask(), Result);
   }
 
-  SmallVector<int, 16> getShuffleMask() const {
-    SmallVector<int, 16> Mask;
-    getShuffleMask(Mask);
-    return Mask;
-  }
+  /// findBroadcastElement - If all defined elements of the mask specify
+  /// the same element, return that element, otherwise return -1.
+  static int findBroadcastElement(Value *Mask);
+
+  int findBroadcastElement() const { return findBroadcastElement(getMask()); }
 
   /// Change values in a shuffle permute mask assuming the two vector operands
   /// of length InVecNumElts have swapped position.

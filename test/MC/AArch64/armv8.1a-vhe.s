@@ -1,4 +1,5 @@
 // RUN: llvm-mc -triple aarch64-none-linux-gnu -show-encoding -mattr=+v8.1a < %s | FileCheck %s
+// RUN: llvm-mc -triple aarch64-none-linux-gnu -show-encoding -mattr=+v8.1a,+sve < %s | FileCheck %s
 
 
 //------------------------------------------------------------------------------

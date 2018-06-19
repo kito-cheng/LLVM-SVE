@@ -118,6 +118,7 @@
 #include <forward_list>
 #include <map>
 #include <set>
+#include <unordered_set>
 
 using namespace llvm;
 
@@ -129,6 +130,18 @@ static cl::opt<std::string>
     MatchPrefix("match-prefix", cl::init(""),
                 cl::desc("Only match instructions with the given prefix"),
                 cl::cat(AsmMatcherEmitterCat));
+
+namespace std {
+  /// Hash function for std::pair<unsigned,unsigned>.
+  /// This is needed in AsmOperandEqualityContraints field of the
+  /// MatchableInfo class.
+  template <> struct hash<std::pair<unsigned, unsigned>> {
+    inline size_t operator()(const std::pair<unsigned, unsigned> &v) const {
+      std::hash<unsigned> hasher;
+      return hasher(v.first) ^ hasher(v.second);
+    }
+  };
+} // end namespace std
 
 namespace {
 class AsmMatcherInfo;
@@ -204,6 +217,8 @@ struct ClassInfo {
 
   /// For custom match classes: the diagnostic kind for when the predicate fails.
   std::string DiagnosticType;
+
+  std::string DiagnosticPredicate;
 
   /// Is this operand optional and not always required.
   bool IsOptional;
@@ -500,6 +515,22 @@ struct MatchableInfo {
   /// removed.
   SmallVector<AsmOperand, 8> AsmOperands;
 
+  /// AsmOperandEqualityConstraints - a set of pairs holding operand
+  /// constraints.
+  /// Each constraint is represented as a pair holding position of the token of
+  /// the operand asm name.
+  /// For example, an "AsmString" "add $Vd.s, $Vn.s, $Xn" would be
+  /// split in the following list of tokens:
+  ///
+  ///    ['add', '$Vd', '.s', '$Vn', '.s', '$Xn']
+  ///
+  /// A constraint "$Vd = $Vn" (e.g. for a destructive operation) is rendered
+  /// as the pair {1,3} into this set (note that tokens are numbered starting
+  /// from 0).
+  /// Notice that only equality constraints are handled here, no
+  /// "@earlyclobber" operator.
+  std::unordered_set<std::pair<unsigned,unsigned>> AsmOperandEqualityContraints;
+
   /// Predicates - The required subtarget features to match this instruction.
   SmallVector<const SubtargetFeatureInfo *, 4> RequiredFeatures;
 
@@ -557,7 +588,7 @@ struct MatchableInfo {
 
   /// validate - Return true if this matchable is a valid thing to match against
   /// and perform a bunch of validity checking.
-  bool validate(StringRef CommentDelimiter, bool Hack) const;
+  bool validate(StringRef CommentDelimiter) const;
 
   /// findAsmOperand - Find the AsmOperand with the specified name and
   /// suboperand index.
@@ -924,6 +955,65 @@ void MatchableInfo::initialize(const AsmMatcherInfo &Info,
 
   HasDeprecation =
       DepMask ? !DepMask->getValue()->getAsUnquotedString().empty() : false;
+
+  // Generate tied operand contraints info.
+  const auto &CGIOperands = getResultInst()->Operands;
+  for (const auto &CGIOp: CGIOperands) {
+    if (!TheDef->getValue("AsmMatchConverter"))
+      break;
+    if (!TheDef->getValueAsString("AsmMatchConverter").empty())
+      break;
+
+    const auto &CGIConstraints = CGIOp.Constraints;
+    // No constraint, jump to next operand.
+    if (CGIConstraints.empty())
+      continue;
+
+    const auto SymbolicName = std::string("$") + CGIOp.Name;
+
+    const auto Pos1 = std::find_if(std::begin(AsmOperands),
+                                   std::end(AsmOperands),
+                                   [&SymbolicName](const AsmOperand &A) {
+                                     return A.Token == SymbolicName;
+                                   });
+
+    // Skipping operands with constraint but no reference in the
+    // AsmString. No need to throw a warning, as it's normal to have
+    // a $dst operand in the outs dag that is constrained to a $src
+    // operand in the ins dag but that does not appear in the AsmString.
+    if (Pos1 == std::end(AsmOperands))
+      continue;
+
+    const size_t LHSIdx = std::distance(std::begin(AsmOperands), Pos1) + 1;
+
+    for (const auto &Constraint : CGIConstraints) {
+      if (!Constraint.isTied())
+        continue;
+
+      const unsigned OtherOperand = Constraint.getTiedOperand();
+      const auto OtherOpName = std::string("$") + CGIOperands[OtherOperand].Name;
+
+      const auto Pos2 = std::find_if(std::begin(AsmOperands),
+                                     std::end(AsmOperands),
+                                     [&OtherOpName](const AsmOperand &A) {
+                                       return A.Token == OtherOpName;
+                                     });
+
+      // Skipping operands with constraint but no reference in the
+      // AsmString. No need to throw a warning, as it's normal to have
+      // a $dst operand in the outs dag that is constrained to a $src
+      // operand in the ins dag but that does not appear in the AsmString.
+      if (Pos2 == std::end(AsmOperands))
+        continue;
+
+      const size_t RHSIdx = std::distance(std::begin(AsmOperands), Pos2) + 1;
+
+      // Add the constraint. Using min/max as we consider constraint
+      // pair {A,B} and {B,A} the same
+      AsmOperandEqualityContraints.emplace(std::min(LHSIdx, RHSIdx),
+                                           std::max(LHSIdx, RHSIdx));
+    }
+  }
 }
 
 /// Append an AsmOperand for the given substring of AsmString.
@@ -1016,7 +1106,7 @@ void MatchableInfo::tokenizeAsmString(const AsmMatcherInfo &Info,
     addAsmOperand(String.substr(Prev), IsIsolatedToken);
 }
 
-bool MatchableInfo::validate(StringRef CommentDelimiter, bool Hack) const {
+bool MatchableInfo::validate(StringRef CommentDelimiter) const {
   // Reject matchables with no .s string.
   if (AsmString.empty())
     PrintFatalError(TheDef->getLoc(), "instruction with empty asm string");
@@ -1050,15 +1140,8 @@ bool MatchableInfo::validate(StringRef CommentDelimiter, bool Hack) const {
                       "matchable with operand modifier '" + Tok +
                       "' not supported by asm matcher.  Mark isCodeGenOnly!");
 
-    // Verify that any operand is only mentioned once.
-    // We reject aliases and ignore instructions for now.
+    // If an operand is mentioned more than once, issue a warning.
     if (Tok[0] == '$' && !OperandNames.insert(Tok).second) {
-      if (!Hack)
-        PrintFatalError(TheDef->getLoc(),
-                        "ERROR: matchable with tied operand '" + Tok +
-                        "' can never be matched!");
-      // FIXME: Should reject these.  The ARM backend hits this with $lane in a
-      // bunch of instructions.  It is unclear what the right answer is.
       DEBUG({
         errs() << "warning: '" << TheDef->getName() << "': "
                << "ignoring instruction with tied operand '"
@@ -1111,6 +1194,7 @@ ClassInfo *AsmMatcherInfo::getTokenClass(StringRef Token) {
     Entry->RenderMethod = "<invalid>";
     Entry->ParserMethod = "";
     Entry->DiagnosticType = "";
+    Entry->DiagnosticPredicate = "";
     Entry->IsOptional = false;
     Entry->DefaultMethod = "<invalid>";
   }
@@ -1247,6 +1331,7 @@ buildRegisterClasses(SmallPtrSetImpl<Record*> &SingletonRegisters) {
     CI->Registers = RS;
     // FIXME: diagnostic type.
     CI->DiagnosticType = "";
+    CI->DiagnosticPredicate = "";
     CI->IsOptional = false;
     CI->DefaultMethod = ""; // unused
     RegisterSetClasses.insert(std::make_pair(RS, CI));
@@ -1363,6 +1448,11 @@ void AsmMatcherInfo::buildOperandClasses() {
     if (StringInit *SI = dyn_cast<StringInit>(DiagnosticType))
       CI->DiagnosticType = SI->getValue();
 
+    Record *DiagnosticPred = Rec->getValueAsDef("DiagnosticPredicate");
+    Init *Predicate = DiagnosticPred->getValueInit("Predicate");
+    if (CodeInit *SI = dyn_cast<CodeInit>(Predicate))
+      CI->DiagnosticPredicate = SI->getValue();
+
     Init *IsOptional = Rec->getValueInit("IsOptional");
     if (BitInit *BI = dyn_cast<BitInit>(IsOptional))
       CI->IsOptional = BI->getValue();
@@ -1473,7 +1563,7 @@ void AsmMatcherInfo::buildInfo() {
 
       // Ignore instructions which shouldn't be matched and diagnose invalid
       // instruction definitions with an error.
-      if (!II->validate(CommentDelimiter, true))
+      if (!II->validate(CommentDelimiter))
         continue;
 
       Matchables.push_back(std::move(II));
@@ -1504,7 +1594,7 @@ void AsmMatcherInfo::buildInfo() {
       II->initialize(*this, SingletonRegisters, Variant, HasMnemonicFirst);
 
       // Validate the alias definitions.
-      II->validate(CommentDelimiter, false);
+      II->validate(CommentDelimiter);
 
       Matchables.push_back(std::move(II));
     }
@@ -2208,10 +2298,14 @@ static void emitValidateOperandClass(AsmMatcherInfo &Info,
     OS << "  case " << CI.Name << ":\n";
     OS << "    if (Operand." << CI.PredicateMethod << "())\n";
     OS << "      return MCTargetAsmParser::Match_Success;\n";
-    if (!CI.DiagnosticType.empty())
+    if (!CI.DiagnosticType.empty()) {
+      if (!CI.DiagnosticPredicate.empty()) {
+        OS << "    if (!(" << CI.DiagnosticPredicate << "))\n";
+        OS << "      break;\n";
+      }
       OS << "    return " << Info.Target.getName() << "AsmParser::Match_"
          << CI.DiagnosticType << ";\n";
-    else
+    } else
       OS << "    break;\n";
   }
   OS << "  } // end switch (Kind)\n\n";
@@ -2711,6 +2805,76 @@ static void emitCustomOperandParsing(raw_ostream &OS, CodeGenTarget &Target,
   OS << "}\n\n";
 }
 
+static void emitAsmOperandConstraints(CodeGenTarget &Target,
+                                      AsmMatcherInfo &Info,
+                                      raw_ostream &OS) {
+  std::string Buf;
+  raw_string_ostream TmpOS(Buf);
+  TmpOS << "static const unsigned DCL[][3] =\n";
+  TmpOS << "  {\n";
+  bool TableEmpty = true;
+  for (const auto &Inst : Target.getInstructionsByEnumValue()) {
+    auto It =
+      std::find_if(Info.Matchables.begin(),
+                   Info.Matchables.end(),
+                   [&Inst](const std::unique_ptr<MatchableInfo> &MI) {
+                     return (MI->TheDef->getID() == Inst->TheDef->getID());
+                   });
+
+    if (It != Info.Matchables.end()) {
+      auto Constraints = (**It).AsmOperandEqualityContraints;
+      if (!Constraints.empty()) {
+        std::string Namespace = Inst->TheDef->getValueAsString("Namespace");
+
+        for (const auto &x : Constraints) {
+          TableEmpty = false;
+          TmpOS << "  {";
+          TmpOS << Namespace << "::"<< (**It).TheDef->getName() << ", ";
+          TmpOS << x.first << ", " << x.second;
+          TmpOS << "},\n";
+        }
+      }
+    }
+  }
+  TmpOS << "};\n\n";
+  if (!TableEmpty)
+    OS << TmpOS.str();
+
+  OS << "static bool ";
+  OS << "checkAsmOperandConstraints(const MCInst &Inst,\n";
+  OS << "                           const OperandVector &Operands,\n";
+  OS << "                           SMLoc &Loc) {\n";
+
+  if (TableEmpty) {
+    OS << "return true;\n}\n\n";
+    return;
+  }
+
+  OS << "  const unsigned Opcode = Inst.getOpcode();\n";
+  OS << "  const unsigned SearchValue[3] = {Opcode, 0, 0};\n";
+  OS << "  const auto Range = std::equal_range(std::begin(DCL),\n";
+  OS << "                                      std::end(DCL),\n";
+  OS << "                                      SearchValue,\n";
+  OS << "                                      [](const unsigned (&a)[3],\n";
+  OS << "                                         const unsigned (&b)[3]) {\n";
+  OS << "                                        return (a[0] < b[0]);\n";
+  OS << "                                      });\n";
+  OS << "\n";
+  OS << "  for (auto Item = Range.first;  Item != Range.second; ++Item) {\n";
+  OS << "    unsigned Tok1Idx = (*Item)[1];\n";
+  OS << "    unsigned Tok2Idx = (*Item)[2];\n";
+  OS << "    MCParsedAsmOperand &Op1 = *Operands[Tok1Idx];\n";
+  OS << "    MCParsedAsmOperand &Op2 = *Operands[Tok2Idx];\n";
+  OS << "    if ((Op1.isAnyReg() && Op2.isAnyReg()) &&\n";
+  OS << "        (Op1.getReg() != Op2.getReg())) {\n";
+  OS << "      Loc = Op2.getStartLoc();\n";
+  OS << "      return false;\n";
+  OS << "    }\n";
+  OS << "  }\n";
+  OS << "  return true;\n";
+  OS << "}\n\n";
+}
+
 static void emitMnemonicSpellChecker(raw_ostream &OS, CodeGenTarget &Target,
                                      unsigned VariantCount) {
   OS << "std::string " << Target.getName() << "MnemonicSpellCheck(StringRef S, uint64_t FBS) {\n";
@@ -2911,6 +3075,8 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   SubtargetFeatureInfo::emitComputeAssemblerAvailableFeatures(
       Info.Target.getName(), ClassName, "ComputeAvailableFeatures",
       Info.SubtargetFeatures, OS);
+
+  emitAsmOperandConstraints(Target, Info, OS);
 
   StringToOffsetTable StringTable;
 
@@ -3152,10 +3318,10 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   OS << "      // target predicate, that diagnostic is preferred.\n";
   OS << "      if (!HadMatchOtherThanPredicate &&\n";
   OS << "          (it == MnemonicRange.first || ErrorInfo <= ActualIdx)) {\n";
-  OS << "        ErrorInfo = ActualIdx;\n";
   OS << "        // InvalidOperand is the default. Prefer specificity.\n";
-  OS << "        if (Diag != Match_InvalidOperand)\n";
+  OS << "        if (Diag != Match_InvalidOperand || ErrorInfo != ActualIdx)\n";
   OS << "          RetCode = Diag;\n";
+  OS << "        ErrorInfo = ActualIdx;\n";
   OS << "      }\n";
   OS << "      // Otherwise, just reject this instance of the mnemonic.\n";
   OS << "      OperandsValid = false;\n";
@@ -3196,6 +3362,14 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
      << "    }\n\n";
   OS << "    if (matchingInlineAsm) {\n";
   OS << "      convertToMapAndConstraints(it->ConvertFn, Operands);\n";
+  OS << "      SMLoc Loc;\n";
+  OS << "      if (!checkAsmOperandConstraints(Inst, Operands, Loc)) {\n";
+  OS << "         getParser().Error(Loc,\n";
+  OS << "                      \"operand must match destination register\");\n";
+  OS << "         ErrorInfo = " << (HasMnemonicFirst ? "1" : "SIndex") << ";\n";
+  OS << "         return Match_InvalidOperand;\n";
+  OS << "      }\n";
+  OS << "\n";
   OS << "      return Match_Success;\n";
   OS << "    }\n\n";
   OS << "    // We have selected a definite instruction, convert the parsed\n"
@@ -3234,6 +3408,15 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
     OS << "      getParser().Warning(Loc, Info, None);\n";
     OS << "    }\n";
   }
+
+  OS << "      SMLoc Loc;\n";
+  OS << "      if (!checkAsmOperandConstraints(Inst, Operands, Loc)) {\n";
+  OS << "         getParser().Error(Loc,\n";
+  OS << "                      \"operand must match destination register\");\n";
+  OS << "         ErrorInfo = " << (HasMnemonicFirst ? "1" : "SIndex") << ";\n";
+  OS << "         return Match_InvalidOperand;\n";
+  OS << "      }\n";
+  OS << "\n";
 
   OS << "    return Match_Success;\n";
   OS << "  }\n\n";

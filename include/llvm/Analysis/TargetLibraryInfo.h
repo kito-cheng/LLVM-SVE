@@ -18,6 +18,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Pass.h"
+#include <set>
 
 namespace llvm {
 template <typename T> class ArrayRef;
@@ -29,6 +30,12 @@ struct VecDesc {
   StringRef ScalarFnName;
   StringRef VectorFnName;
   unsigned VectorizationFactor;
+};
+
+/// Describes a vector function, by Name and Signature.
+struct VectorFnInfo {
+  std::string Name;
+  FunctionType *Signature;
 };
 
   enum LibFunc {
@@ -51,6 +58,10 @@ class TargetLibraryInfoImpl {
   llvm::DenseMap<unsigned, std::string> CustomNames;
   static StringRef const StandardNames[NumLibFuncs];
   bool ShouldExtI32Param, ShouldExtI32Return, ShouldSignExtI32Param;
+
+  /// Holds the mapping between a scalar function and its available vector
+  /// versions.
+  std::multimap<const std::string, VectorFnInfo> VectorFunctionInfo;
 
   enum AvailabilityState {
     StandardName = 3, // (memset to all ones)
@@ -147,10 +158,15 @@ public:
   /// given vector library.
   void addVectorizableFunctionsFromVecLib(enum VectorLibrary VecLib);
 
+  /// Adds vector routines that are available as global external function
+  /// pointers in the module \param M.
+  void addOpenMPVectorFunctions(Module *M);
+
   /// Return true if the function F has a vector equivalent with vectorization
   /// factor VF.
-  bool isFunctionVectorizable(StringRef F, unsigned VF) const {
-    return !getVectorizedFunction(F, VF).empty();
+  bool isFunctionVectorizable(StringRef F, unsigned VF,
+                              FunctionType *Sign) const {
+    return !getVectorizedFunction(F, VF, Sign).empty();
   }
 
   /// Return true if the function F has a vector equivalent with any
@@ -159,7 +175,8 @@ public:
 
   /// Return the name of the equivalent of F, vectorized with factor VF. If no
   /// such mapping exists, return the empty string.
-  StringRef getVectorizedFunction(StringRef F, unsigned VF) const;
+  std::string getVectorizedFunction(StringRef F, unsigned VF,
+                                    FunctionType *Sign = nullptr) const;
 
   /// Return true if the function F has a scalar equivalent, and set VF to be
   /// the vectorization factor.
@@ -200,6 +217,21 @@ public:
   /// intended to verify that the size in the frontend matches LLVM. All other
   /// queries should use getWCharSize() instead.
   static unsigned getTargetWCharSize(const Triple &T);
+
+  /// Demangle a scalar/vector mangled name
+  static std::pair<std::string, std::string> demangle(const std::string In);
+
+  /// Checks the validity of a mangled scalar/vector name.
+  static bool isMangledName(std::string Name);
+
+  /// Check the validity of \param Ty to be used as a vector function
+  /// signature. If so, it sets \param FTy to the vector function signature.
+  static bool isValidSignature(Type *Ty, FunctionType *&FTY);
+
+  /// Mangles \param VecName and \param ScalarName using a prefix, a middlefix
+  /// and a suffix.
+  static std::string mangle(const std::string VecName,
+                            const std::string ScalarName);
 };
 
 /// Provides information about what library functions are available for
@@ -251,14 +283,16 @@ public:
   bool has(LibFunc F) const {
     return Impl->getState(F) != TargetLibraryInfoImpl::Unavailable;
   }
-  bool isFunctionVectorizable(StringRef F, unsigned VF) const {
-    return Impl->isFunctionVectorizable(F, VF);
+  bool isFunctionVectorizable(StringRef F, unsigned VF,
+                              FunctionType *Sign) const {
+    return Impl->isFunctionVectorizable(F, VF, Sign);
   }
   bool isFunctionVectorizable(StringRef F) const {
     return Impl->isFunctionVectorizable(F);
   }
-  StringRef getVectorizedFunction(StringRef F, unsigned VF) const {
-    return Impl->getVectorizedFunction(F, VF);
+  std::string getVectorizedFunction(StringRef F, unsigned VF,
+                                  FunctionType *Sign) const {
+    return Impl->getVectorizedFunction(F, VF, Sign);
   }
 
   /// Tests if the function is both available and a candidate for optimized code
@@ -340,6 +374,15 @@ public:
                   FunctionAnalysisManager::Invalidator &) {
     return false;
   }
+
+  /// Check whether the vector pcs should be used
+  void setCallingConv(CallInst *CI) const {
+    StringRef FName = CI->getCalledFunction()->getName();
+    if (FName.startswith("_ZGVn")) {
+      CI->setCallingConv(CallingConv::AArch64_VectorCall);
+    }
+  }
+
 };
 
 /// Analysis pass providing the \c TargetLibraryInfo.

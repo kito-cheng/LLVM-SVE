@@ -63,6 +63,46 @@ loopexit:
   ret void
 }
 
+
+; Make sure we vectorize this loop:
+; int foo(float *a, float *b, float *c, int n) {
+;   for (int i=0; i<n; ++i)
+;     a[i] = b[i] * c[2];
+; }
+
+;CHECK-LABEL: define i32 @unhoisted_load
+;CHECK: for.body.preheader:
+;C HECK: br i1 %cmp.zero, label %scalar.ph, label %vector.memcheck, !dbg [[BODY_LOC:![0-9]+]]
+;C HECK: vector.memcheck:
+;C HECK: %[[C3:[0-9]+]] = getelementptr float, float* %c, i64 3
+;C HECK: icmp ugt float* %[[C3]], %a
+;C HECK: icmp ult float* %scaleidx, %scevgep
+;C HECK: br i1 %conflict.rdx, label %scalar.ph, label %vector.ph, !dbg [[BODY_LOC]]
+;C HECK: load <4 x float>
+; June 2017 merge fallout, re-enable this test
+define i32 @unhoisted_load(float* nocapture %a, float* nocapture %b, float* nocapture %c, i32 %n) nounwind uwtable ssp {
+entry:
+  %cmp6 = icmp sgt i32 %n, 0, !dbg !6
+  %scaleidx = getelementptr inbounds float, float* %c, i64 2
+  br i1 %cmp6, label %for.body, label %for.end, !dbg !6
+
+for.body:                                         ; preds = %entry, %for.body
+  %indvars.iv = phi i64 [ %indvars.iv.next, %for.body ], [ 0, %entry ], !dbg !7
+  %arrayidx = getelementptr inbounds float, float* %b, i64 %indvars.iv, !dbg !7
+  %0 = load float, float* %arrayidx, align 4, !dbg !7
+  %scale = load float, float* %scaleidx, align 4, !dbg !7
+  %mul = fmul float %0, %scale
+  %arrayidx2 = getelementptr inbounds float, float* %a, i64 %indvars.iv, !dbg !7
+  store float %mul, float* %arrayidx2, align 4, !dbg !7
+  %indvars.iv.next = add i64 %indvars.iv, 1, !dbg !7
+  %lftr.wideiv = trunc i64 %indvars.iv.next to i32, !dbg !7
+  %exitcond = icmp eq i32 %lftr.wideiv, %n, !dbg !7
+  br i1 %exitcond, label %for.end, label %for.body, !dbg !7
+
+for.end:                                          ; preds = %for.body, %entry
+  ret i32 undef, !dbg !8
+}
+
 ; CHECK: [[BODY_LOC]] = !DILocation(line: 101, column: 1, scope: !{{.*}})
 
 !llvm.module.flags = !{!0, !1}

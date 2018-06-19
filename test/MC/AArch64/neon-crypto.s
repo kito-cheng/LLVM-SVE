@@ -1,6 +1,9 @@
 // RUN: llvm-mc -triple=arm64 -mattr=+neon -mattr=+crypto -show-encoding < %s | FileCheck %s
 // RUN: not llvm-mc -triple=arm64 -mattr=+neon -show-encoding < %s 2>&1 | FileCheck -check-prefix=CHECK-NO-CRYPTO-ARM64 %s
 
+// RUN: llvm-mc -triple=arm64 -mattr=+neon -mattr=+crypto -mattr=+sve -show-encoding < %s | FileCheck %s
+// RUN: not llvm-mc -triple=arm64 -mattr=+neon -mattr=+sve -show-encoding < %s 2>&1 | FileCheck -check-prefix=CHECK-NO-CRYPTO-ARM64 %s
+
 // Check that the assembler can handle the documented syntax for AArch64
 
 //------------------------------------------------------------------------------

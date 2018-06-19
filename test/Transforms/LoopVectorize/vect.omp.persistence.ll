@@ -74,7 +74,7 @@ entry:
   br label %loop_cond
 loop_cond:
   %indx = phi i32 [ 1, %entry ], [ %inc, %loop_inc ]
-  %cmp = icmp ne i32 %indx, %a
+  %cmp = icmp slt i32 %indx, %a
   br i1 %cmp, label %return, label %loop_inc
 loop_inc:
   %inc = add i32 %indx, 1

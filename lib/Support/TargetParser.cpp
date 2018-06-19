@@ -234,6 +234,11 @@ bool llvm::ARM::getExtensionFeatures(unsigned Extensions,
   else
     Features.push_back("-dsp");
 
+  if (Extensions & ARM::AEK_DOTPROD)
+    Features.push_back("+dotprod");
+  else
+    Features.push_back("-dotprod");
+
   return getHWDivFeatures(Extensions, Features);
 }
 
@@ -444,6 +449,8 @@ bool llvm::AArch64::getExtensionFeatures(unsigned Extensions,
     Features.push_back("+crc");
   if (Extensions & AArch64::AEK_CRYPTO)
     Features.push_back("+crypto");
+  if (Extensions & AArch64::AEK_DOTPROD)
+    Features.push_back("+dotprod");
   if (Extensions & AArch64::AEK_FP16)
     Features.push_back("+fullfp16");
   if (Extensions & AArch64::AEK_PROFILE)
@@ -537,7 +544,7 @@ StringRef llvm::AArch64::getDefaultCPU(StringRef Arch) {
 }
 
 unsigned llvm::AArch64::checkArchVersion(StringRef Arch) {
-  if (Arch[0] == 'v' && std::isdigit(Arch[1]))
+  if (Arch.size() >= 2 && Arch[0] == 'v' && std::isdigit(Arch[1]))
     return (Arch[1] - 48);
   return 0;
 }
@@ -632,7 +639,7 @@ StringRef llvm::ARM::getCanonicalArchName(StringRef Arch) {
   // Only match non-marketing names
   if (offset != StringRef::npos) {
     // Must start with 'vN'.
-    if (A[0] != 'v' || !std::isdigit(A[1]))
+    if (A.size() < 2 || A[0] != 'v' || !std::isdigit(A[1]))
       return Error;
     // Can't have an extra 'eb'.
     if (A.find("eb") != StringRef::npos)

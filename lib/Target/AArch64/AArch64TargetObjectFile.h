@@ -11,6 +11,7 @@
 #define LLVM_LIB_TARGET_AARCH64_AARCH64TARGETOBJECTFILE_H
 
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
+#include "llvm/MC/MCSectionELF.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 
 namespace llvm {

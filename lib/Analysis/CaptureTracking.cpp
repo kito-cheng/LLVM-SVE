@@ -27,6 +27,7 @@
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Intrinsics.h"
 
 using namespace llvm;
 
@@ -212,7 +213,7 @@ bool llvm::PointerMayBeCapturedBefore(const Value *V, bool ReturnCaptures,
 static int const Threshold = 20;
 
 void llvm::PointerMayBeCaptured(const Value *V, CaptureTracker *Tracker) {
-  assert(V->getType()->isPointerTy() && "Capture is for pointers only!");
+  assert(V->getType()->isPtrOrPtrVectorTy() && "Capture is for pointers only!");
   SmallVector<const Use *, Threshold> Worklist;
   SmallSet<const Use *, Threshold> Visited;
   int Count = 0;
@@ -249,6 +250,31 @@ void llvm::PointerMayBeCaptured(const Value *V, CaptureTracker *Tracker) {
         if (MI->isVolatile())
           if (Tracker->captured(U))
             return;
+      if (const auto *F = CS.getCalledFunction()) {
+        if (const auto IID = F->getIntrinsicID()) {
+          // Permit masked loads so long as the use isn't the merge value.
+          if (IID == Intrinsic::masked_load ||
+              IID == Intrinsic::masked_spec_load ||
+              IID == Intrinsic::masked_gather) {
+            // Initial conservative check that the merge value is undef.
+            // TODO: Also allow all-zeroes...
+            if (!isa<UndefValue>(I->getOperand(3)))
+              if (Tracker->captured(U))
+                return;
+            break;
+          }
+
+          // Disallow masked stores if the data is the value (not really
+          // possible at this point; splats get discarded by way of hitting
+          // the default case for vector inserts and shuffles.
+          if (IID == Intrinsic::masked_store ||
+              IID == Intrinsic::masked_scatter) {
+            if (V == I->getOperand(0))
+              if (Tracker->captured(U))
+                return;
+          }
+        }
+      }
 
       // Not captured if only passed via 'nocapture' arguments.  Note that
       // calling a function pointer does not in itself cause the pointer to

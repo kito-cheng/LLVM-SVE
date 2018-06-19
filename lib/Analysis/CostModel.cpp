@@ -179,8 +179,11 @@ static bool matchPairwiseShuffleMask(ShuffleVectorInst *SI, bool IsLeft,
   for (unsigned i = 0, e = (1 << Level), val = !IsLeft; i != e; ++i, val += 2)
     Mask[i] = val;
 
-  SmallVector<int, 16> ActualMask = SI->getShuffleMask();
-  return Mask == ActualMask;
+  SmallVector<int, 16> ActualMask;
+  if (!SI->getShuffleMask(ActualMask) || Mask != ActualMask)
+    return false;
+
+  return true;
 }
 
 static bool matchPairwiseReductionAtLevel(const BinaryOperator *BinOp,
@@ -389,8 +392,8 @@ static bool matchVectorSplittingReduction(const ExtractElementInst *ReduxRoot,
     // Fill the rest of the mask with -1 for undef.
     std::fill(&ShuffleMask[MaskStart], ShuffleMask.end(), -1);
 
-    SmallVector<int, 16> Mask = Shuffle->getShuffleMask();
-    if (ShuffleMask != Mask)
+    SmallVector<int, 16> Mask;
+    if (!Shuffle->getShuffleMask(Mask) || ShuffleMask != Mask)
       return false;
 
     RdxOp = NextRdxOp;
@@ -516,9 +519,9 @@ unsigned CostModelAnalysis::getInstructionCost(const Instruction *I) const {
     const ShuffleVectorInst *Shuffle = cast<ShuffleVectorInst>(I);
     Type *VecTypOp0 = Shuffle->getOperand(0)->getType();
     unsigned NumVecElems = VecTypOp0->getVectorNumElements();
-    SmallVector<int, 16> Mask = Shuffle->getShuffleMask();
+    SmallVector<int, 16> Mask;
 
-    if (NumVecElems == Mask.size()) {
+    if (Shuffle->getShuffleMask(Mask) && NumVecElems == Mask.size()) {
       if (isReverseVectorMask(Mask))
         return TTI->getShuffleCost(TargetTransformInfo::SK_Reverse, VecTypOp0,
                                    0, nullptr);

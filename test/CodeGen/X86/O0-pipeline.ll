@@ -36,6 +36,7 @@
 ; CHECK-NEXT:       X86 DAG->DAG Instruction Selection
 ; CHECK-NEXT:       X86 PIC Global Base Reg Initialization
 ; CHECK-NEXT:       Expand ISel Pseudo-instructions
+; CHECK-NEXT:       Initialize StackRegions
 ; CHECK-NEXT:       Local Stack Slot Allocation
 ; CHECK-NEXT:       X86 WinAlloca Expander
 ; CHECK-NEXT:       Eliminate PHI nodes for register allocation

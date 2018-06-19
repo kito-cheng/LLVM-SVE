@@ -322,18 +322,24 @@ template <> struct MDNodeKeyImpl<GenericDINode> : MDNodeOpsKey {
 
 template <> struct MDNodeKeyImpl<DISubrange> {
   int64_t Count;
+  Metadata *CountNode;
   int64_t LowerBound;
 
   MDNodeKeyImpl(int64_t Count, int64_t LowerBound)
-      : Count(Count), LowerBound(LowerBound) {}
+      : Count(Count), CountNode(nullptr), LowerBound(LowerBound) {}
+  MDNodeKeyImpl(Metadata *CountNode, int64_t LowerBound)
+      : Count(-1), CountNode(CountNode), LowerBound(LowerBound) {}
   MDNodeKeyImpl(const DISubrange *N)
-      : Count(N->getCount()), LowerBound(N->getLowerBound()) {}
+      : Count(N->getCount()), CountNode(N->getRawCountNode()),
+        LowerBound(N->getLowerBound()) {}
 
   bool isKeyOf(const DISubrange *RHS) const {
-    return Count == RHS->getCount() && LowerBound == RHS->getLowerBound();
+    return Count == RHS->getCount() && LowerBound == RHS->getLowerBound() &&
+           CountNode == RHS->getRawCountNode();
   }
-
-  unsigned getHashValue() const { return hash_combine(Count, LowerBound); }
+  unsigned getHashValue() const {
+    return hash_combine(Count, CountNode, LowerBound);
+  }
 };
 
 template <> struct MDNodeKeyImpl<DIEnumerator> {
@@ -771,26 +777,31 @@ template <> struct MDNodeKeyImpl<DIModule> {
   MDString *ConfigurationMacros;
   MDString *IncludePath;
   MDString *ISysRoot;
+  Metadata *File;
+  unsigned Line;
 
   MDNodeKeyImpl(Metadata *Scope, MDString *Name, MDString *ConfigurationMacros,
-                MDString *IncludePath, MDString *ISysRoot)
+                MDString *IncludePath, MDString *ISysRoot, Metadata *File,
+                unsigned Line)
       : Scope(Scope), Name(Name), ConfigurationMacros(ConfigurationMacros),
-        IncludePath(IncludePath), ISysRoot(ISysRoot) {}
+        IncludePath(IncludePath), ISysRoot(ISysRoot), File(File), Line(Line) {}
   MDNodeKeyImpl(const DIModule *N)
       : Scope(N->getRawScope()), Name(N->getRawName()),
         ConfigurationMacros(N->getRawConfigurationMacros()),
-        IncludePath(N->getRawIncludePath()), ISysRoot(N->getRawISysRoot()) {}
+        IncludePath(N->getRawIncludePath()), ISysRoot(N->getRawISysRoot()),
+        File(N->getRawFile()), Line(N->getLine()) {}
 
   bool isKeyOf(const DIModule *RHS) const {
     return Scope == RHS->getRawScope() && Name == RHS->getRawName() &&
            ConfigurationMacros == RHS->getRawConfigurationMacros() &&
            IncludePath == RHS->getRawIncludePath() &&
-           ISysRoot == RHS->getRawISysRoot();
+           ISysRoot == RHS->getRawISysRoot() &&
+           File == RHS->getRawFile() && Line == RHS->getLine();
   }
 
   unsigned getHashValue() const {
     return hash_combine(Scope, Name,
-                        ConfigurationMacros, IncludePath, ISysRoot);
+                        ConfigurationMacros, IncludePath, ISysRoot, File, Line);
   }
 };
 
@@ -1220,6 +1231,9 @@ public:
   using VectorConstantsTy = ConstantUniqueMap<ConstantVector>;
   VectorConstantsTy VectorConstants;
 
+  DenseMap<Type *, std::unique_ptr<StepVector>> SVVConstants;
+  DenseMap<Type *, std::unique_ptr<VScale>> VSVConstants;
+
   DenseMap<PointerType *, std::unique_ptr<ConstantPointerNull>> CPNConstants;
 
   DenseMap<Type *, std::unique_ptr<UndefValue>> UVConstants;
@@ -1256,7 +1270,7 @@ public:
   unsigned NamedStructTypesUniqueID = 0;
     
   DenseMap<std::pair<Type *, uint64_t>, ArrayType*> ArrayTypes;
-  DenseMap<std::pair<Type *, unsigned>, VectorType*> VectorTypes;
+  DenseMap<std::tuple<Type *, unsigned, unsigned>, VectorType*> VectorTypes;
   DenseMap<Type*, PointerType*> PointerTypes;  // Pointers in AddrSpace = 0
   DenseMap<std::pair<Type*, unsigned>, PointerType*> ASPointerTypes;
 

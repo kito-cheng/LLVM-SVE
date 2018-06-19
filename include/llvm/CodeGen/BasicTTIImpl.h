@@ -363,6 +363,8 @@ public:
 
   unsigned getRegisterBitWidth(bool Vector) const { return 32; }
 
+  unsigned getRegisterBitWidthUpperBound(bool Vector) { return 32; }
+
   /// Estimate the overhead of scalarizing an instruction. Insert and Extract
   /// are set if the result needs to be inserted and/or extracted from vectors.
   unsigned getScalarizationOverhead(Type *Ty, bool Insert, bool Extract) {

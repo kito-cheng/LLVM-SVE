@@ -61,7 +61,13 @@ int AsmLexer::getNextChar() {
   return (unsigned char)*CurPtr++;
 }
 
-/// LexFloatLiteral: [0-9]*[.][0-9]*([eE][+-]?[0-9]*)?
+/// LexIdentifier: [a-zA-Z_.][a-zA-Z0-9_$.@?]*
+static bool IsIdentifierChar(char c, bool AllowAt) {
+  return isalnum(c) || c == '_' || c == '$' || c == '.' ||
+         (c == '@' && AllowAt) || c == '?';
+}
+
+/// LexFloatLiteral: [0-9]*[.][0-9]*([eE][+-]?[0-9]+)?
 ///
 /// The leading integral digit sequence and dot should have already been
 /// consumed, some or all of the fractional digit sequence *can* have been
@@ -78,6 +84,12 @@ AsmToken AsmLexer::LexFloatLiteral() {
     ++CurPtr;
     if (*CurPtr == '-' || *CurPtr == '+')
       ++CurPtr;
+    if (!isdigit(*CurPtr)) {
+      while (IsIdentifierChar(*CurPtr, AllowAtInIdentifier))
+        ++CurPtr;
+      return AsmToken(AsmToken::Identifier,
+                      StringRef(TokStart, CurPtr - TokStart));
+    }
     while (isdigit(*CurPtr))
       ++CurPtr;
   }
@@ -131,12 +143,6 @@ AsmToken AsmLexer::LexHexFloatLiteral(bool NoIntDigits) {
                                  "expected at least one exponent digit");
 
   return AsmToken(AsmToken::Real, StringRef(TokStart, CurPtr - TokStart));
-}
-
-/// LexIdentifier: [a-zA-Z_.][a-zA-Z0-9_$.@?]*
-static bool IsIdentifierChar(char c, bool AllowAt) {
-  return isalnum(c) || c == '_' || c == '$' || c == '.' ||
-         (c == '@' && AllowAt) || c == '?';
 }
 
 AsmToken AsmLexer::LexIdentifier() {

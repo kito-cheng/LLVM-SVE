@@ -194,10 +194,6 @@ public:
   bool shouldClusterMemOps(MachineInstr &FirstLdSt, MachineInstr &SecondLdSt,
                            unsigned NumLoads) const override;
 
-  MachineInstr *emitFrameIndexDebugValue(MachineFunction &MF, int FrameIx,
-                                         uint64_t Offset, const MDNode *Var,
-                                         const MDNode *Expr,
-                                         const DebugLoc &DL) const;
   void copyPhysRegTuple(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                         const DebugLoc &DL, unsigned DestReg, unsigned SrcReg,
                         bool KillSrc, unsigned Opcode,
@@ -322,6 +318,7 @@ public:
   /// executed in one cycle less.
   bool isFalkorShiftExtFast(const MachineInstr &MI) const;
 private:
+  unsigned getInstBundleLength(const MachineInstr &MI) const;
 
   /// \brief Sets the offsets on outlined instructions in \p MBB which use SP
   /// so that they will be valid post-outlining.
@@ -344,14 +341,16 @@ void emitFrameOffset(MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI,
                      const DebugLoc &DL, unsigned DestReg, unsigned SrcReg,
                      int Offset, const TargetInstrInfo *TII,
                      MachineInstr::MIFlag = MachineInstr::NoFlags,
-                     bool SetNZCV = false);
+                     bool SetNZCV = false,
+                     bool KillSrcReg = false);
 
 /// rewriteAArch64FrameIndex - Rewrite MI to access 'Offset' bytes from the
 /// FP. Return false if the offset could not be handled directly in MI, and
 /// return the left-over portion by reference.
 bool rewriteAArch64FrameIndex(MachineInstr &MI, unsigned FrameRegIdx,
                             unsigned FrameReg, int &Offset,
-                            const AArch64InstrInfo *TII);
+                            const AArch64InstrInfo *TII,
+                            bool IsTemporaryFrameReg = false);
 
 /// \brief Use to report the frame offset status in isAArch64FrameOffsetLegal.
 enum AArch64FrameOffsetStatus {
@@ -359,6 +358,49 @@ enum AArch64FrameOffsetStatus {
   AArch64FrameOffsetIsLegal = 0x1,      ///< Offset is legal.
   AArch64FrameOffsetCanUpdate = 0x2     ///< Offset can apply, at least partly.
 };
+
+// struct TSFlags {
+#define TSFLAG_ELEMENT_SIZE_TYPE(X)     (X)        // 3-bits
+#define TSFLAG_DESTRUCTIVE_INST_TYPE(X) ((X) << 3) // 4-bits
+#define TSFLAG_FALSE_LANE_TYPE(X)       ((X) << 7) // 2-bits
+// }
+
+namespace AArch64 {
+enum ElementSizeType {
+  ElementSizeMask = TSFLAG_ELEMENT_SIZE_TYPE(0x7),
+  ElementSizeB    = TSFLAG_ELEMENT_SIZE_TYPE(0x1),
+  ElementSizeH    = TSFLAG_ELEMENT_SIZE_TYPE(0x2),
+  ElementSizeS    = TSFLAG_ELEMENT_SIZE_TYPE(0x3),
+  ElementSizeD    = TSFLAG_ELEMENT_SIZE_TYPE(0x4),
+};
+
+enum DestructiveInstType {
+  DestructiveInstTypeMask       = TSFLAG_DESTRUCTIVE_INST_TYPE(0xf),
+  NotDestructive                = TSFLAG_DESTRUCTIVE_INST_TYPE(0x0),
+  DestructiveOther              = TSFLAG_DESTRUCTIVE_INST_TYPE(0x1),
+  DestructiveUnary              = TSFLAG_DESTRUCTIVE_INST_TYPE(0x2),
+  DestructiveBinaryImm          = TSFLAG_DESTRUCTIVE_INST_TYPE(0x3),
+  DestructiveBinaryShImmUnpred  = TSFLAG_DESTRUCTIVE_INST_TYPE(0x4),
+  DestructiveBinary             = TSFLAG_DESTRUCTIVE_INST_TYPE(0x5),
+  DestructiveBinaryComm         = TSFLAG_DESTRUCTIVE_INST_TYPE(0x6),
+  DestructiveBinaryCommWithRev  = TSFLAG_DESTRUCTIVE_INST_TYPE(0x7),
+  DestructiveTernaryCommWithRev = TSFLAG_DESTRUCTIVE_INST_TYPE(0x8),
+};
+
+enum FalseLaneType {
+  FalseLanesMask  = TSFLAG_FALSE_LANE_TYPE(0x3),
+  FalseLanesZero  = TSFLAG_FALSE_LANE_TYPE(0x1),
+  FalseLanesUndef = TSFLAG_FALSE_LANE_TYPE(0x2),
+};
+
+#undef TSFLAG_ELEMENT_SIZE_TYPE
+#undef TSFLAG_DESTRUCTIVE_INST_TYPE
+#undef TSFLAG_FALSE_LANE_TYPE
+
+int getSVEPseudoMap(uint16_t Opcode);
+int getSVERevInstr(uint16_t Opcode);
+int getSVEOrigInstr(uint16_t Opcode);
+}
 
 /// \brief Check if the @p Offset is a valid frame offset for @p MI.
 /// The returned value reports the validity of the frame offset for @p MI.

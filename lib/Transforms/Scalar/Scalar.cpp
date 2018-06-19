@@ -63,6 +63,8 @@ void llvm::initializeScalarOpts(PassRegistry &Registry) {
   initializeLoopInterchangePass(Registry);
   initializeLoopPredicationLegacyPassPass(Registry);
   initializeLoopRotateLegacyPassPass(Registry);
+  initializeLoopExprTreeFactoringPassPass(Registry);
+  initializeLoopSpeculativeBoundsCheckPass(Registry);
   initializeLoopStrengthReducePass(Registry);
   initializeLoopRerollPass(Registry);
   initializeLoopUnrollPass(Registry);
@@ -95,9 +97,11 @@ void llvm::initializeScalarOpts(PassRegistry &Registry) {
   initializePlaceSafepointsPass(Registry);
   initializeFloat2IntLegacyPassPass(Registry);
   initializeLoopDistributeLegacyPass(Registry);
+  initializeSeparateInvariantsFromGepOffsetPass(Registry);
   initializeLoopLoadEliminationPass(Registry);
   initializeLoopSimplifyCFGLegacyPassPass(Registry);
   initializeLoopVersioningPassPass(Registry);
+  initializeLoopRewriteGEPsPassPass(Registry);
 }
 
 void LLVMInitializeScalarOpts(LLVMPassRegistryRef R) {
@@ -170,6 +174,10 @@ void LLVMAddLoopDeletionPass(LLVMPassManagerRef PM) {
 
 void LLVMAddLoopIdiomPass(LLVMPassManagerRef PM) {
   unwrap(PM)->add(createLoopIdiomPass());
+}
+
+void LLVMAddLoopExprTreeFactoringPass(LLVMPassManagerRef PM) {
+  unwrap(PM)->add(createLoopExprTreeFactoringPass());
 }
 
 void LLVMAddLoopRotatePass(LLVMPassManagerRef PM) {
@@ -279,4 +287,8 @@ void LLVMAddBasicAliasAnalysisPass(LLVMPassManagerRef PM) {
 
 void LLVMAddLowerExpectIntrinsicPass(LLVMPassManagerRef PM) {
   unwrap(PM)->add(createLowerExpectIntrinsicPass());
+}
+
+void LLVMAddLoopRewriteGEPsPass(LLVMPassManagerRef PM) {
+  unwrap(PM)->add(createLoopRewriteGEPsPass());
 }

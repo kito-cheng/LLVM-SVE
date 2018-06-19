@@ -1,5 +1,7 @@
 // RUN: llvm-mc -triple aarch64-none-linux-gnu -show-encoding -mattr=+v8.2a < %s | FileCheck %s
 // RUN: not llvm-mc -triple aarch64-none-linux-gnu -show-encoding -mattr=-v8.2a < %s 2>&1 | FileCheck %s --check-prefix=ERROR
+// RUN: llvm-mc -triple aarch64-none-linux-gnu -show-encoding -mattr=+v8.2a,+sve < %s | FileCheck %s
+// RUN: not llvm-mc -triple aarch64-none-linux-gnu -show-encoding -mattr=-v8.2a,+sve < %s 2>&1 | FileCheck %s --check-prefix=ERROR
 
   at s1e1rp, x1
   at s1e1wp, x2

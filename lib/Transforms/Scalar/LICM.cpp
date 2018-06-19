@@ -620,7 +620,7 @@ bool llvm::canSinkOrHoistInst(Instruction &I, AAResults *AA, DominatorTree *DT,
       // writes to this memory in the loop, we can hoist or sink.
       if (AliasAnalysis::onlyAccessesArgPointees(Behavior)) {
         for (Value *Op : CI->arg_operands())
-          if (Op->getType()->isPointerTy() &&
+          if (Op->getType()->isPtrOrPtrVectorTy() &&
               pointerInvalidatedByLoop(Op, MemoryLocation::UnknownSize,
                                        AAMDNodes(), CurAST))
             return false;

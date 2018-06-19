@@ -900,7 +900,11 @@ InstCombiner::simplifyShrShlDemandedBits(Instruction *Shr, const APInt &ShrOp1,
 Value *InstCombiner::SimplifyDemandedVectorElts(Value *V, APInt DemandedElts,
                                                 APInt &UndefElts,
                                                 unsigned Depth) {
-  unsigned VWidth = V->getType()->getVectorNumElements();
+  // Cannot track elements when you don't know how many there are.
+  if (cast<VectorType>(V->getType())->isScalable())
+    return nullptr;
+
+  unsigned VWidth = cast<VectorType>(V->getType())->getNumElements();
   APInt EltMask(APInt::getAllOnesValue(VWidth));
   assert((DemandedElts & ~EltMask) == 0 && "Invalid DemandedElts!");
 
@@ -1018,17 +1022,18 @@ Value *InstCombiner::SimplifyDemandedVectorElts(Value *V, APInt DemandedElts,
     unsigned LHSVWidth =
       Shuffle->getOperand(0)->getType()->getVectorNumElements();
     APInt LeftDemanded(LHSVWidth, 0), RightDemanded(LHSVWidth, 0);
+    SmallVector<int, 16> Mask;
+    if (!Shuffle->getShuffleMask(Mask))
+      return nullptr;
     for (unsigned i = 0; i < VWidth; i++) {
-      if (DemandedElts[i]) {
-        unsigned MaskVal = Shuffle->getMaskValue(i);
-        if (MaskVal != -1u) {
-          assert(MaskVal < LHSVWidth * 2 &&
-                 "shufflevector mask index out of range!");
-          if (MaskVal < LHSVWidth)
-            LeftDemanded.setBit(MaskVal);
-          else
-            RightDemanded.setBit(MaskVal - LHSVWidth);
-        }
+      if (DemandedElts[i] && Mask[i] != -1) {
+        unsigned MaskVal = Mask[i];
+        assert(MaskVal < LHSVWidth * 2 &&
+               "shufflevector mask index out of range!");
+        if (MaskVal < LHSVWidth)
+          LeftDemanded.setBit(MaskVal);
+        else
+          RightDemanded.setBit(MaskVal - LHSVWidth);
       }
     }
 
@@ -1048,7 +1053,7 @@ Value *InstCombiner::SimplifyDemandedVectorElts(Value *V, APInt DemandedElts,
     bool LHSUniform = true;
     bool RHSUniform = true;
     for (unsigned i = 0; i < VWidth; i++) {
-      unsigned MaskVal = Shuffle->getMaskValue(i);
+      unsigned MaskVal = Mask[i];
       if (MaskVal == -1u) {
         UndefElts.setBit(i);
       } else if (!DemandedElts[i]) {
@@ -1116,7 +1121,7 @@ Value *InstCombiner::SimplifyDemandedVectorElts(Value *V, APInt DemandedElts,
           Elts.push_back(UndefValue::get(Type::getInt32Ty(I->getContext())));
         else
           Elts.push_back(ConstantInt::get(Type::getInt32Ty(I->getContext()),
-                                          Shuffle->getMaskValue(i)));
+                                          Mask[i]));
       }
       I->setOperand(2, ConstantVector::get(Elts));
       MadeChange = true;

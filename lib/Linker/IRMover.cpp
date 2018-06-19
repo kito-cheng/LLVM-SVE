@@ -169,6 +169,10 @@ bool TypeMapTy::areTypesIsomorphic(Type *DstTy, Type *SrcTy) {
     if (DSTy->isLiteral() != SSTy->isLiteral() ||
         DSTy->isPacked() != SSTy->isPacked())
       return false;
+  } else if (auto *DVecTy = dyn_cast<VectorType>(DstTy)) {
+    if (DVecTy->getElementCount() !=
+        cast<VectorType>(SrcTy)->getElementCount())
+      return false;
   } else if (auto *DSeqTy = dyn_cast<SequentialType>(DstTy)) {
     if (DSeqTy->getNumElements() !=
         cast<SequentialType>(SrcTy)->getNumElements())
@@ -292,7 +296,7 @@ Type *TypeMapTy::get(Type *Ty, SmallPtrSet<StructType *, 8> &Visited) {
                                    cast<ArrayType>(Ty)->getNumElements());
   case Type::VectorTyID:
     return *Entry = VectorType::get(ElementTypes[0],
-                                    cast<VectorType>(Ty)->getNumElements());
+                                    cast<VectorType>(Ty)->getElementCount());
   case Type::PointerTyID:
     return *Entry = PointerType::get(ElementTypes[0],
                                      cast<PointerType>(Ty)->getAddressSpace());

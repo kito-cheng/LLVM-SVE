@@ -519,8 +519,11 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(localexec);
   KEYWORD(zeroinitializer);
   KEYWORD(undef);
+  KEYWORD(vscale);
+  KEYWORD(stepvector);
   KEYWORD(null);
   KEYWORD(none);
+  KEYWORD(as);
   KEYWORD(to);
   KEYWORD(caller);
   KEYWORD(within);
@@ -579,6 +582,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(arm_apcscc);
   KEYWORD(arm_aapcscc);
   KEYWORD(arm_aapcs_vfpcc);
+  KEYWORD(aarch64_vector_pcs);
   KEYWORD(msp430_intrcc);
   KEYWORD(avr_intrcc);
   KEYWORD(avr_signalcc);
@@ -684,6 +688,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(xchg); KEYWORD(nand); KEYWORD(max); KEYWORD(min); KEYWORD(umax);
   KEYWORD(umin);
 
+  KEYWORD(n);
   KEYWORD(x);
   KEYWORD(blockaddress);
 

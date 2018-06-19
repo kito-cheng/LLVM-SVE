@@ -1282,6 +1282,36 @@ Instruction *InstCombiner::visitAdd(BinaryOperator &I) {
       return New;
     }
   }
+  // splat(A) + (splat(B) + C) ==> splat(A+B) + C
+  {
+    bool HasNSW = I.hasNoSignedWrap();
+    bool HasNUW = I.hasNoUnsignedWrap();
+    Value *A = nullptr, *B = nullptr, *C = nullptr;
+
+    if (match(LHS, m_SplatVector(m_Value(A)))) {
+      if (match(RHS, m_Add(m_SplatVector(m_Value(B)), m_Value(C))) ||
+          match(RHS, m_Add(m_Value(C), m_SplatVector(m_Value(B))))) {
+        // It's safe to propagate the wrap flags because stepvector[0] == 0
+        auto NewAdd = Builder.CreateAdd(A, B, "", HasNUW, HasNSW);
+
+        auto EC = cast<VectorType>(I.getType())->getElementCount();
+        auto SplatNewAdd = Builder.CreateVectorSplat(EC, NewAdd);
+        return BinaryOperator::CreateAdd(SplatNewAdd, C);
+      }
+    }
+
+    if (match(RHS, m_SplatVector(m_Value(A)))) {
+      if (match(LHS, m_Add(m_SplatVector(m_Value(B)), m_Value(C))) ||
+          match(LHS, m_Add(m_Value(C), m_SplatVector(m_Value(B))))) {
+        // It's safe to propagate the wrap flags because stepvector[0] == 0
+        auto NewAdd = Builder.CreateAdd(A, B, "", HasNUW, HasNSW);
+
+        auto EC = cast<VectorType>(I.getType())->getElementCount();
+        auto SplatNewAdd = Builder.CreateVectorSplat(EC, NewAdd);
+        return BinaryOperator::CreateAdd(SplatNewAdd, C);
+      }
+    }
+  }
 
   // TODO(jingyue): Consider willNotOverflowSignedAdd and
   // willNotOverflowUnsignedAdd to reduce the number of invocations of
@@ -1681,6 +1711,25 @@ Instruction *InstCombiner::visitSub(BinaryOperator &I) {
       match(Op1, m_Trunc(m_PtrToInt(m_Value(RHSOp)))))
     if (Value *Res = OptimizePointerDifference(LHSOp, RHSOp, I.getType()))
       return replaceInstUsesWith(I, Res);
+
+  // (splat(A) + B) - splat(C) ==> splat(A-C) + B
+  {
+    bool HasNSW = I.hasNoSignedWrap();
+    bool HasNUW = I.hasNoUnsignedWrap();
+    Value *A = nullptr, *B = nullptr, *C = nullptr;
+
+    if (match(Op1, m_SplatVector(m_Value(C)))) {
+      if (match(Op0, m_Add(m_SplatVector(m_Value(A)), m_Value(B))) ||
+          match(Op0, m_Add(m_Value(B), m_SplatVector(m_Value(A))))) {
+        // It's safe to propagate the wrap flags because stepvector[0] == 0
+        auto NewSub = Builder.CreateSub(A, C, "", HasNUW, HasNSW);
+
+        auto EC = cast<VectorType>(I.getType())->getElementCount();
+        auto SplatNewSub = Builder.CreateVectorSplat(EC, NewSub);
+        return BinaryOperator::CreateAdd(SplatNewSub, B);
+      }
+    }
+  }
 
   bool Changed = false;
   if (!I.hasNoSignedWrap() && willNotOverflowSignedSub(Op0, Op1, I)) {

@@ -83,14 +83,14 @@ define <4 x half> @s_to_h(<4 x float> %a) {
 
 define <4 x half> @d_to_h(<4 x double> %a) {
 ; CHECK-LABEL: d_to_h:
-; CHECK-DAG: fcvt
-; CHECK-DAG: fcvt
-; CHECK-DAG: fcvt
-; CHECK-DAG: fcvt
-; CHECK-DAG: ins
-; CHECK-DAG: ins
-; CHECK-DAG: ins
-; CHECK-DAG: ins
+; CHECK-DAG: fcvt h
+; CHECK-DAG: fcvt h
+; CHECK-DAG: fcvt h
+; CHECK-DAG: fcvt h
+; CHECK-DAG: mov v{{[0-9]+}}.h
+; CHECK-DAG: mov v{{[0-9]+}}.h
+; CHECK-DAG: mov v{{[0-9]+}}.h
+; CHECK-DAG: mov v{{[0-9]+}}.h
   %1 = fptrunc <4 x double> %a to <4 x half>
   ret <4 x half> %1
 }
@@ -104,14 +104,13 @@ define <4 x float> @h_to_s(<4 x half> %a) {
 
 define <4 x double> @h_to_d(<4 x half> %a) {
 ; CHECK-LABEL: h_to_d:
+; CHECK-DAG: mov h{{[0-9]+}}, v0.h
+; CHECK-DAG: mov h{{[0-9]+}}, v0.h
+; CHECK-DAG: mov h{{[0-9]+}}, v0.h
 ; CHECK-DAG: fcvt
 ; CHECK-DAG: fcvt
 ; CHECK-DAG: fcvt
 ; CHECK-DAG: fcvt
-; CHECK-DAG: ins
-; CHECK-DAG: ins
-; CHECK-DAG: ins
-; CHECK-DAG: ins
   %1 = fpext <4 x half> %a to <4 x double>
   ret <4 x double> %1
 }

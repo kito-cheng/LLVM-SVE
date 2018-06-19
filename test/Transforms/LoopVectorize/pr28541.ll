@@ -1,4 +1,5 @@
 ; RUN: opt -loop-vectorize -pass-remarks=loop-vectorize -S < %s 2>&1 | FileCheck %s
+; RUN: opt -sve-loop-vectorize -mtriple=aarch64-none-linux-gnu -mattr=+sve -force-vector-predication -force-scalable-vectorization -pass-remarks=loop-vectorize -S < %s 2>&1 | FileCheck %s
 
 ; FIXME: Check for -pass-remarks-missed and -pass-remarks-analysis output when
 ; addAcyclicInnerLoop emits analysis.

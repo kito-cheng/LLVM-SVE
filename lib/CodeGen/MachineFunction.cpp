@@ -768,6 +768,18 @@ void llvm::addLandingPadInfo(const LandingPadInst &I, MachineBasicBlock &MBB) {
 /// \}
 
 //===----------------------------------------------------------------------===//
+//  StackRegion implementation
+//===----------------------------------------------------------------------===//
+
+void StackRegion::addObject(MachineFrameInfo &MFI, int FrameIndex) {
+  MFI.setObjectRegion(FrameIndex, this);
+}
+
+void StackRegion::removeObject(MachineFrameInfo &MFI, int FrameIndex) {
+  MFI.setObjectRegion(FrameIndex, nullptr);
+}
+
+//===----------------------------------------------------------------------===//
 //  MachineJumpTableInfo implementation
 //===----------------------------------------------------------------------===//
 

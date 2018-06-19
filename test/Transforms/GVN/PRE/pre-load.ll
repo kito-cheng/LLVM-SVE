@@ -430,3 +430,44 @@ cleanup2:
   call void @g(i32 %NOTPRE)
   cleanupret from %c2 unwind to caller
 }
+
+; void test13(float * restrict A, float * restrict B, int s, int n) {
+;  for (int i = s; i < n; i++)
+;    A[i] = B[i] + B[i-1];
+; }
+define void @test13(float* noalias %out, float* %in, i32 %first, i32 %last) {
+; CHECK-LABEL: @test13(
+entry:
+  %entrycond = icmp slt i32 %first, %last
+  br i1 %entrycond, label %loop.ph, label %exit
+
+; CHECK: loop.ph:
+; CHECK: %[[PRE:.*]] = load float
+loop.ph:
+  %first.wide = sext i32 %first to i64
+  %last.wide = sext i32 %last to i64
+  br label %loop
+
+; CHECK: loop:
+; CHECK: %[[PHI:.*]] = phi float [ %[[PRE]], %loop.ph ], [ %data, %loop ]
+; CHECK: %data = load float
+; CHECK-NOT: = load
+; CHECK: fadd float %data, %[[PHI]]
+; CHECK: br i1 %exitcond
+loop:
+  %iv = phi i64 [ %first.wide, %loop.ph ], [ %iv.next, %loop ]
+  %arrayidx = getelementptr inbounds float, float* %in, i64 %iv
+  %data = load float, float* %arrayidx
+  %0 = add nsw i64 %iv, -1
+  %arrayidx2 = getelementptr inbounds float, float* %in, i64 %0
+  %data2 = load float, float* %arrayidx2
+  %add = fadd float %data, %data2
+  %arrayidx4 = getelementptr inbounds float, float* %out, i64 %iv
+  store float %add, float* %arrayidx4
+  %iv.next = add nsw i64 %iv, 1
+  %exitcond = icmp ne i64 %iv.next, %last.wide
+  br i1 %exitcond, label %loop, label %exit
+
+exit:
+  ret void
+}

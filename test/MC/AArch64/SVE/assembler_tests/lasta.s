@@ -1,0 +1,258 @@
+// RUN: llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -mattr=+sve < %s | FileCheck %s
+// RUN: not llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -mattr=-sve 2>&1 < %s | FileCheck --check-prefix=CHECK-ERROR %s
+lasta   x23, p3, z13.d  // 00000101-11100000-10101101-10110111
+// CHECK: lasta   x23, p3, z13.d // encoding: [0xb7,0xad,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-10101101-10110111
+LASTA   X23, P3, Z13.D  // 00000101-11100000-10101101-10110111
+// CHECK: lasta   x23, p3, z13.d // encoding: [0xb7,0xad,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-10101101-10110111
+lasta   w21, p5, z10.h  // 00000101-01100000-10110101-01010101
+// CHECK: lasta   w21, p5, z10.h // encoding: [0x55,0xb5,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-10110101-01010101
+LASTA   W21, P5, Z10.H  // 00000101-01100000-10110101-01010101
+// CHECK: lasta   w21, p5, z10.h // encoding: [0x55,0xb5,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-10110101-01010101
+lasta   w0, p0, z0.b  // 00000101-00100000-10100000-00000000
+// CHECK: lasta   w0, p0, z0.b // encoding: [0x00,0xa0,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-10100000-00000000
+LASTA   W0, P0, Z0.B  // 00000101-00100000-10100000-00000000
+// CHECK: lasta   w0, p0, z0.b // encoding: [0x00,0xa0,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-10100000-00000000
+lasta   b23, p3, z13.b  // 00000101-00100010-10001101-10110111
+// CHECK: lasta   b23, p3, z13.b // encoding: [0xb7,0x8d,0x22,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100010-10001101-10110111
+LASTA   B23, P3, Z13.B  // 00000101-00100010-10001101-10110111
+// CHECK: lasta   b23, p3, z13.b // encoding: [0xb7,0x8d,0x22,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100010-10001101-10110111
+lasta   w0, p0, z0.h  // 00000101-01100000-10100000-00000000
+// CHECK: lasta   w0, p0, z0.h // encoding: [0x00,0xa0,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-10100000-00000000
+LASTA   W0, P0, Z0.H  // 00000101-01100000-10100000-00000000
+// CHECK: lasta   w0, p0, z0.h // encoding: [0x00,0xa0,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-10100000-00000000
+lasta   w21, p5, z10.b  // 00000101-00100000-10110101-01010101
+// CHECK: lasta   w21, p5, z10.b // encoding: [0x55,0xb5,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-10110101-01010101
+LASTA   W21, P5, Z10.B  // 00000101-00100000-10110101-01010101
+// CHECK: lasta   w21, p5, z10.b // encoding: [0x55,0xb5,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-10110101-01010101
+lasta   wzr, p7, z31.s  // 00000101-10100000-10111111-11111111
+// CHECK: lasta   wzr, p7, z31.s // encoding: [0xff,0xbf,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-10111111-11111111
+LASTA   WZR, P7, Z31.S  // 00000101-10100000-10111111-11111111
+// CHECK: lasta   wzr, p7, z31.s // encoding: [0xff,0xbf,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-10111111-11111111
+lasta   wzr, p7, z31.h  // 00000101-01100000-10111111-11111111
+// CHECK: lasta   wzr, p7, z31.h // encoding: [0xff,0xbf,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-10111111-11111111
+LASTA   WZR, P7, Z31.H  // 00000101-01100000-10111111-11111111
+// CHECK: lasta   wzr, p7, z31.h // encoding: [0xff,0xbf,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-10111111-11111111
+lasta   x21, p5, z10.d  // 00000101-11100000-10110101-01010101
+// CHECK: lasta   x21, p5, z10.d // encoding: [0x55,0xb5,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-10110101-01010101
+LASTA   X21, P5, Z10.D  // 00000101-11100000-10110101-01010101
+// CHECK: lasta   x21, p5, z10.d // encoding: [0x55,0xb5,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-10110101-01010101
+lasta   s0, p0, z0.s  // 00000101-10100010-10000000-00000000
+// CHECK: lasta   s0, p0, z0.s // encoding: [0x00,0x80,0xa2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100010-10000000-00000000
+LASTA   S0, P0, Z0.S  // 00000101-10100010-10000000-00000000
+// CHECK: lasta   s0, p0, z0.s // encoding: [0x00,0x80,0xa2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100010-10000000-00000000
+lasta   b0, p0, z0.b  // 00000101-00100010-10000000-00000000
+// CHECK: lasta   b0, p0, z0.b // encoding: [0x00,0x80,0x22,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100010-10000000-00000000
+LASTA   B0, P0, Z0.B  // 00000101-00100010-10000000-00000000
+// CHECK: lasta   b0, p0, z0.b // encoding: [0x00,0x80,0x22,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100010-10000000-00000000
+lasta   w23, p3, z13.s  // 00000101-10100000-10101101-10110111
+// CHECK: lasta   w23, p3, z13.s // encoding: [0xb7,0xad,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-10101101-10110111
+LASTA   W23, P3, Z13.S  // 00000101-10100000-10101101-10110111
+// CHECK: lasta   w23, p3, z13.s // encoding: [0xb7,0xad,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-10101101-10110111
+lasta   s21, p5, z10.s  // 00000101-10100010-10010101-01010101
+// CHECK: lasta   s21, p5, z10.s // encoding: [0x55,0x95,0xa2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100010-10010101-01010101
+LASTA   S21, P5, Z10.S  // 00000101-10100010-10010101-01010101
+// CHECK: lasta   s21, p5, z10.s // encoding: [0x55,0x95,0xa2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100010-10010101-01010101
+lasta   h0, p0, z0.h  // 00000101-01100010-10000000-00000000
+// CHECK: lasta   h0, p0, z0.h // encoding: [0x00,0x80,0x62,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100010-10000000-00000000
+LASTA   H0, P0, Z0.H  // 00000101-01100010-10000000-00000000
+// CHECK: lasta   h0, p0, z0.h // encoding: [0x00,0x80,0x62,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100010-10000000-00000000
+lasta   wzr, p7, z31.b  // 00000101-00100000-10111111-11111111
+// CHECK: lasta   wzr, p7, z31.b // encoding: [0xff,0xbf,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-10111111-11111111
+LASTA   WZR, P7, Z31.B  // 00000101-00100000-10111111-11111111
+// CHECK: lasta   wzr, p7, z31.b // encoding: [0xff,0xbf,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-10111111-11111111
+lasta   b21, p5, z10.b  // 00000101-00100010-10010101-01010101
+// CHECK: lasta   b21, p5, z10.b // encoding: [0x55,0x95,0x22,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100010-10010101-01010101
+LASTA   B21, P5, Z10.B  // 00000101-00100010-10010101-01010101
+// CHECK: lasta   b21, p5, z10.b // encoding: [0x55,0x95,0x22,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100010-10010101-01010101
+lasta   d0, p0, z0.d  // 00000101-11100010-10000000-00000000
+// CHECK: lasta   d0, p0, z0.d // encoding: [0x00,0x80,0xe2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100010-10000000-00000000
+LASTA   D0, P0, Z0.D  // 00000101-11100010-10000000-00000000
+// CHECK: lasta   d0, p0, z0.d // encoding: [0x00,0x80,0xe2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100010-10000000-00000000
+lasta   s23, p3, z13.s  // 00000101-10100010-10001101-10110111
+// CHECK: lasta   s23, p3, z13.s // encoding: [0xb7,0x8d,0xa2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100010-10001101-10110111
+LASTA   S23, P3, Z13.S  // 00000101-10100010-10001101-10110111
+// CHECK: lasta   s23, p3, z13.s // encoding: [0xb7,0x8d,0xa2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100010-10001101-10110111
+lasta   d23, p3, z13.d  // 00000101-11100010-10001101-10110111
+// CHECK: lasta   d23, p3, z13.d // encoding: [0xb7,0x8d,0xe2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100010-10001101-10110111
+LASTA   D23, P3, Z13.D  // 00000101-11100010-10001101-10110111
+// CHECK: lasta   d23, p3, z13.d // encoding: [0xb7,0x8d,0xe2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100010-10001101-10110111
+lasta   x0, p0, z0.d  // 00000101-11100000-10100000-00000000
+// CHECK: lasta   x0, p0, z0.d // encoding: [0x00,0xa0,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-10100000-00000000
+LASTA   X0, P0, Z0.D  // 00000101-11100000-10100000-00000000
+// CHECK: lasta   x0, p0, z0.d // encoding: [0x00,0xa0,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-10100000-00000000
+lasta   s31, p7, z31.s  // 00000101-10100010-10011111-11111111
+// CHECK: lasta   s31, p7, z31.s // encoding: [0xff,0x9f,0xa2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100010-10011111-11111111
+LASTA   S31, P7, Z31.S  // 00000101-10100010-10011111-11111111
+// CHECK: lasta   s31, p7, z31.s // encoding: [0xff,0x9f,0xa2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100010-10011111-11111111
+lasta   b31, p7, z31.b  // 00000101-00100010-10011111-11111111
+// CHECK: lasta   b31, p7, z31.b // encoding: [0xff,0x9f,0x22,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100010-10011111-11111111
+LASTA   B31, P7, Z31.B  // 00000101-00100010-10011111-11111111
+// CHECK: lasta   b31, p7, z31.b // encoding: [0xff,0x9f,0x22,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100010-10011111-11111111
+lasta   w21, p5, z10.s  // 00000101-10100000-10110101-01010101
+// CHECK: lasta   w21, p5, z10.s // encoding: [0x55,0xb5,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-10110101-01010101
+LASTA   W21, P5, Z10.S  // 00000101-10100000-10110101-01010101
+// CHECK: lasta   w21, p5, z10.s // encoding: [0x55,0xb5,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-10110101-01010101
+lasta   w23, p3, z13.b  // 00000101-00100000-10101101-10110111
+// CHECK: lasta   w23, p3, z13.b // encoding: [0xb7,0xad,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-10101101-10110111
+LASTA   W23, P3, Z13.B  // 00000101-00100000-10101101-10110111
+// CHECK: lasta   w23, p3, z13.b // encoding: [0xb7,0xad,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-10101101-10110111
+lasta   h23, p3, z13.h  // 00000101-01100010-10001101-10110111
+// CHECK: lasta   h23, p3, z13.h // encoding: [0xb7,0x8d,0x62,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100010-10001101-10110111
+LASTA   H23, P3, Z13.H  // 00000101-01100010-10001101-10110111
+// CHECK: lasta   h23, p3, z13.h // encoding: [0xb7,0x8d,0x62,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100010-10001101-10110111
+lasta   w23, p3, z13.h  // 00000101-01100000-10101101-10110111
+// CHECK: lasta   w23, p3, z13.h // encoding: [0xb7,0xad,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-10101101-10110111
+LASTA   W23, P3, Z13.H  // 00000101-01100000-10101101-10110111
+// CHECK: lasta   w23, p3, z13.h // encoding: [0xb7,0xad,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-10101101-10110111
+lasta   d21, p5, z10.d  // 00000101-11100010-10010101-01010101
+// CHECK: lasta   d21, p5, z10.d // encoding: [0x55,0x95,0xe2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100010-10010101-01010101
+LASTA   D21, P5, Z10.D  // 00000101-11100010-10010101-01010101
+// CHECK: lasta   d21, p5, z10.d // encoding: [0x55,0x95,0xe2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100010-10010101-01010101
+lasta   w0, p0, z0.s  // 00000101-10100000-10100000-00000000
+// CHECK: lasta   w0, p0, z0.s // encoding: [0x00,0xa0,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-10100000-00000000
+LASTA   W0, P0, Z0.S  // 00000101-10100000-10100000-00000000
+// CHECK: lasta   w0, p0, z0.s // encoding: [0x00,0xa0,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-10100000-00000000
+lasta   d31, p7, z31.d  // 00000101-11100010-10011111-11111111
+// CHECK: lasta   d31, p7, z31.d // encoding: [0xff,0x9f,0xe2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100010-10011111-11111111
+LASTA   D31, P7, Z31.D  // 00000101-11100010-10011111-11111111
+// CHECK: lasta   d31, p7, z31.d // encoding: [0xff,0x9f,0xe2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100010-10011111-11111111
+lasta   h31, p7, z31.h  // 00000101-01100010-10011111-11111111
+// CHECK: lasta   h31, p7, z31.h // encoding: [0xff,0x9f,0x62,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100010-10011111-11111111
+LASTA   H31, P7, Z31.H  // 00000101-01100010-10011111-11111111
+// CHECK: lasta   h31, p7, z31.h // encoding: [0xff,0x9f,0x62,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100010-10011111-11111111
+lasta   h21, p5, z10.h  // 00000101-01100010-10010101-01010101
+// CHECK: lasta   h21, p5, z10.h // encoding: [0x55,0x95,0x62,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100010-10010101-01010101
+LASTA   H21, P5, Z10.H  // 00000101-01100010-10010101-01010101
+// CHECK: lasta   h21, p5, z10.h // encoding: [0x55,0x95,0x62,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100010-10010101-01010101
+lasta   xzr, p7, z31.d  // 00000101-11100000-10111111-11111111
+// CHECK: lasta   xzr, p7, z31.d // encoding: [0xff,0xbf,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-10111111-11111111
+LASTA   XZR, P7, Z31.D  // 00000101-11100000-10111111-11111111
+// CHECK: lasta   xzr, p7, z31.d // encoding: [0xff,0xbf,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-10111111-11111111

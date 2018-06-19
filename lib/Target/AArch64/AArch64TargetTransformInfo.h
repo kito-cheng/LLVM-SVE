@@ -70,7 +70,7 @@ public:
   /// \name Vector TTI Implementations
   /// @{
 
-  bool enableInterleavedAccessVectorization() { return true; }
+  bool enableInterleavedAccessVectorization() { return !ST->hasSVE(); }
 
   unsigned getNumberOfRegisters(bool Vector) {
     if (Vector) {
@@ -88,6 +88,12 @@ public:
       return 0;
     }
     return 64;
+  }
+
+  unsigned getRegisterBitWidthUpperBound(bool Vector) {
+    if (Vector && ST->hasSVE())
+      return AArch64::SVEMaxBitsPerVector;
+    return getRegisterBitWidth(Vector);
   }
 
   unsigned getMinVectorRegisterBitWidth() {
@@ -130,9 +136,39 @@ public:
 
   bool getTgtMemIntrinsic(IntrinsicInst *Inst, MemIntrinsicInfo &Info);
 
+  bool isLegalMaskedLoad(Type *DataType) {
+    return ST->hasSVE();
+  }
+  bool isLegalMaskedStore(Type *DataType) {
+    return ST->hasSVE();
+  }
+  bool isLegalMaskedGather(Type *DataType);
+
+  bool isLegalMaskedScatter(Type *DataType);
+
+  bool hasVectorMemoryOp(unsigned Opcode, Type *Ty, const MemAccessInfo &Info) {
+    if (ST->hasSVE())
+      return true;
+    return BaseT::hasVectorMemoryOp(Opcode, Ty, Info);
+  }
+
+  unsigned getVectorMemoryOpCost(unsigned Opcode, Type *Src, Value *Ptr,
+                                 unsigned Alignment, unsigned AddressSpace,
+                                 const MemAccessInfo &Info, Instruction *I);
+
   int getInterleavedMemoryOpCost(unsigned Opcode, Type *VecTy, unsigned Factor,
                                  ArrayRef<unsigned> Indices, unsigned Alignment,
                                  unsigned AddressSpace);
+
+  bool canVectorizeNonUnitStrides(bool forceFixedWidth = false) {
+    if (forceFixedWidth)
+      return false;
+    return ST->hasSVE();
+  }
+
+  bool vectorizePreventedSLForwarding(void) {
+    return ST->hasSVE();
+  }
 
   bool
   shouldConsiderAddressTypePromotion(const Instruction &I,
@@ -152,6 +188,8 @@ public:
 
   bool useReductionIntrinsic(unsigned Opcode, Type *Ty,
                              TTI::ReductionFlags Flags) const;
+  bool canReduceInVector(unsigned Opcode, Type *ScalarTy,
+                         TTI::ReductionFlags Flags) const;
   /// @}
 };
 

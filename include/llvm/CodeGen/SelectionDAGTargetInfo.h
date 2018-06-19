@@ -146,7 +146,8 @@ public:
   }
   // Return true when the decision to generate FMA's (or FMS, FMLA etc) rather
   // than FMUL and ADD is delegated to the machine combiner.
-  virtual bool generateFMAsInMachineCombiner(CodeGenOpt::Level OptLevel) const {
+  virtual bool generateFMAsInMachineCombiner(SelectionDAG &DAG,
+                                             CodeGenOpt::Level OptLevel) const {
     return false;
   }
 };

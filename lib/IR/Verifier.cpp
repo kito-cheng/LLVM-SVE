@@ -853,6 +853,13 @@ void Verifier::visitDIScope(const DIScope &N) {
 void Verifier::visitDISubrange(const DISubrange &N) {
   AssertDI(N.getTag() == dwarf::DW_TAG_subrange_type, "invalid tag", &N);
   AssertDI(N.getCount() >= -1, "invalid subrange count", &N);
+  auto *CV = N.getRawCountNode();
+  AssertDI((!CV || (CV && N.getCount() == -1)),
+           "Count must be -1 when it is represented as a Metadata node", &N);
+  AssertDI(
+      (!CV || isa<DIVariable>(CV) || isa<DIExpression>(CV)),
+      "Count must either be a signed constant, a DIVariable or a DIExpression",
+      &N);
 }
 
 void Verifier::visitDIEnumerator(const DIEnumerator &N) {
@@ -861,7 +868,8 @@ void Verifier::visitDIEnumerator(const DIEnumerator &N) {
 
 void Verifier::visitDIBasicType(const DIBasicType &N) {
   AssertDI(N.getTag() == dwarf::DW_TAG_base_type ||
-               N.getTag() == dwarf::DW_TAG_unspecified_type,
+               N.getTag() == dwarf::DW_TAG_unspecified_type ||
+               N.getTag() == dwarf::DW_TAG_string_type,
            "invalid tag", &N);
 }
 
@@ -3903,13 +3911,21 @@ void Verifier::visitIntrinsicCallSite(Intrinsic::ID ID, CallSite CS) {
   getIntrinsicInfoTableEntries(ID, Table);
   ArrayRef<Intrinsic::IITDescriptor> TableRef = Table;
 
+  // Walk the descriptors to extract overloaded types.
   SmallVector<Type *, 4> ArgTys;
+  addOverloadedArgTypes(IFTy->getReturnType(), TableRef, ArgTys);
+  for (unsigned i = 0, e = IFTy->getNumParams(); i != e; ++i)
+    addOverloadedArgTypes(IFTy->getParamType(i), TableRef, ArgTys);
+
+  // Reset ready for our second walk to validate the types.
+  unsigned ArgCount = 0;
+  TableRef = Table;
   Assert(!Intrinsic::matchIntrinsicType(IFTy->getReturnType(),
-                                        TableRef, ArgTys),
+                                        TableRef, ArgTys, ArgCount),
          "Intrinsic has incorrect return type!", IF);
   for (unsigned i = 0, e = IFTy->getNumParams(); i != e; ++i)
     Assert(!Intrinsic::matchIntrinsicType(IFTy->getParamType(i),
-                                          TableRef, ArgTys),
+                                          TableRef, ArgTys, ArgCount),
            "Intrinsic has incorrect argument type!", IF);
 
   // Verify if the intrinsic call matches the vararg property.

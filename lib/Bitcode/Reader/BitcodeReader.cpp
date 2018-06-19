@@ -1683,16 +1683,19 @@ Error BitcodeReader::parseTypeTableBody() {
         return error("Invalid type");
       ResultTy = ArrayType::get(ResultTy, Record[0]);
       break;
-    case bitc::TYPE_CODE_VECTOR:    // VECTOR: [numelts, eltty]
-      if (Record.size() < 2)
+    case bitc::TYPE_CODE_VECTOR: {  // VECTOR: [numblks, numelts, eltty]
+      unsigned Size = Record.size();
+      if (Size < 2)
         return error("Invalid record");
-      if (Record[0] == 0)
+      if (Record[Size - 2] == 0)
         return error("Invalid vector length");
-      ResultTy = getTypeByID(Record[1]);
+      ResultTy = getTypeByID(Record[Size - 1]);
       if (!ResultTy || !StructType::isValidElementType(ResultTy))
         return error("Invalid type");
-      ResultTy = VectorType::get(ResultTy, Record[0]);
+      ResultTy = VectorType::get(ResultTy, Record[Size - 2],
+                                 Size > 2 ? Record[Size - 3] : false);
       break;
+    }
     }
 
     if (NumRecords >= TypeList.size())
@@ -2118,8 +2121,14 @@ Error BitcodeReader::parseConstants() {
     unsigned BitCode = Stream.readRecord(Entry.ID, Record);
     switch (BitCode) {
     default:  // Default behavior: unknown constant
+    case bitc::CST_CODE_STEPVEC:   // STEPVEC
+      V = StepVector::get(CurTy);
+      break;
     case bitc::CST_CODE_UNDEF:     // UNDEF
       V = UndefValue::get(CurTy);
+      break;
+    case bitc::CST_CODE_VSCALE:    // VSCALE
+      V = VScale::get(CurTy);
       break;
     case bitc::CST_CODE_SETTYPE:   // SETTYPE: [typeid]
       if (Record.empty())
@@ -2367,7 +2376,7 @@ Error BitcodeReader::parseConstants() {
       if (VectorType *VTy = dyn_cast<VectorType>(CurTy))
         if (Value *V = ValueList[Record[0]])
           if (SelectorTy != V->getType())
-            SelectorTy = VectorType::get(SelectorTy, VTy->getNumElements());
+            SelectorTy = VectorType::get(SelectorTy, VTy->getElementCount());
 
       V = ConstantExpr::getSelect(ValueList.getConstantFwdRef(Record[0],
                                                               SelectorTy),
@@ -2425,7 +2434,7 @@ Error BitcodeReader::parseConstants() {
       Constant *Op0 = ValueList.getConstantFwdRef(Record[0], OpTy);
       Constant *Op1 = ValueList.getConstantFwdRef(Record[1], OpTy);
       Type *ShufTy = VectorType::get(Type::getInt32Ty(Context),
-                                                 OpTy->getNumElements());
+                                                 OpTy->getElementCount());
       Constant *Op2 = ValueList.getConstantFwdRef(Record[2], ShufTy);
       V = ConstantExpr::getShuffleVector(Op0, Op1, Op2);
       break;
@@ -2439,7 +2448,7 @@ Error BitcodeReader::parseConstants() {
       Constant *Op0 = ValueList.getConstantFwdRef(Record[1], OpTy);
       Constant *Op1 = ValueList.getConstantFwdRef(Record[2], OpTy);
       Type *ShufTy = VectorType::get(Type::getInt32Ty(Context),
-                                                 RTy->getNumElements());
+                                                 RTy->getElementCount());
       Constant *Op2 = ValueList.getConstantFwdRef(Record[3], ShufTy);
       V = ConstantExpr::getShuffleVector(Op0, Op1, Op2);
       break;

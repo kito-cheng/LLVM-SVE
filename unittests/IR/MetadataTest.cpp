@@ -942,6 +942,18 @@ TEST_F(DISubrangeTest, get) {
   EXPECT_EQ(N, MDNode::replaceWithUniqued(std::move(Temp)));
 }
 
+TEST_F(DISubrangeTest, getCountExpression) {
+  uint64_t Elements[] = { dwarf::DW_OP_constu, 5 };
+  auto *N = DISubrange::get(Context, DIExpression::get(Context, Elements), 7);
+  EXPECT_EQ(dwarf::DW_TAG_subrange_type, N->getTag());
+  EXPECT_NE(nullptr, N->getCountExpression());
+  EXPECT_EQ(-1, N->getCount());
+  EXPECT_EQ(7, N->getLowerBound());
+
+  TempDISubrange Temp = N->clone();
+  EXPECT_EQ(N, MDNode::replaceWithUniqued(std::move(Temp)));
+}
+
 TEST_F(DISubrangeTest, getEmptyArray) {
   auto *N = DISubrange::get(Context, -1, 0);
   EXPECT_EQ(dwarf::DW_TAG_subrange_type, N->getTag());
@@ -1757,8 +1769,11 @@ TEST_F(DIModuleTest, get) {
   StringRef ConfigMacro = "-DNDEBUG";
   StringRef Includes = "-I.";
   StringRef Sysroot = "/";
+  DIFile *File = getFile();
+  unsigned Line = 0;
 
-  auto *N = DIModule::get(Context, Scope, Name, ConfigMacro, Includes, Sysroot);
+  auto *N = DIModule::get(Context, Scope, Name, ConfigMacro, Includes, Sysroot,
+                          File, Line);
 
   EXPECT_EQ(dwarf::DW_TAG_module, N->getTag());
   EXPECT_EQ(Scope, N->getScope());
@@ -1766,18 +1781,20 @@ TEST_F(DIModuleTest, get) {
   EXPECT_EQ(ConfigMacro, N->getConfigurationMacros());
   EXPECT_EQ(Includes, N->getIncludePath());
   EXPECT_EQ(Sysroot, N->getISysRoot());
+  EXPECT_EQ(Line, N->getLine());
+  EXPECT_EQ(File, N->getFile());
   EXPECT_EQ(N, DIModule::get(Context, Scope, Name,
-                             ConfigMacro, Includes, Sysroot));
+                             ConfigMacro, Includes, Sysroot, File, Line));
   EXPECT_NE(N, DIModule::get(Context, getFile(), Name,
-                             ConfigMacro, Includes, Sysroot));
+                             ConfigMacro, Includes, Sysroot, File, Line));
   EXPECT_NE(N, DIModule::get(Context, Scope, "other",
-                             ConfigMacro, Includes, Sysroot));
+                             ConfigMacro, Includes, Sysroot, File, Line));
   EXPECT_NE(N, DIModule::get(Context, Scope, Name,
-                             "other", Includes, Sysroot));
+                             "other", Includes, Sysroot, File, Line));
   EXPECT_NE(N, DIModule::get(Context, Scope, Name,
-                             ConfigMacro, "other", Sysroot));
+                             ConfigMacro, "other", Sysroot, File, Line));
   EXPECT_NE(N, DIModule::get(Context, Scope, Name,
-                             ConfigMacro, Includes, "other"));
+                             ConfigMacro, Includes, "other", File, Line));
 
   TempDIModule Temp = N->clone();
   EXPECT_EQ(N, MDNode::replaceWithUniqued(std::move(Temp)));

@@ -180,8 +180,8 @@ void AArch64CallLowering::splitToValueTypes(
   LLVMContext &Ctx = OrigArg.Ty->getContext();
 
   SmallVector<EVT, 4> SplitVTs;
-  SmallVector<uint64_t, 4> Offsets;
-  ComputeValueVTs(TLI, DL, OrigArg.Ty, SplitVTs, &Offsets, 0);
+  SmallVector<FieldOffsets, 4> Offsets;
+  ComputeValueVTs(TLI, DL, OrigArg.Ty, SplitVTs, &Offsets, {0, 0});
 
   if (SplitVTs.size() == 1) {
     // No splitting to do, but we want to replace the original type (e.g. [1 x
@@ -200,8 +200,10 @@ void AArch64CallLowering::splitToValueTypes(
                 SplitTy, OrigArg.Flags, OrigArg.IsFixed});
   }
 
+  // TODO: Do we need to do anything for SVE here?
   for (unsigned i = 0; i < Offsets.size(); ++i)
-    PerformArgSplit(SplitArgs[FirstRegIdx + i].Reg, Offsets[i] * 8);
+    PerformArgSplit(SplitArgs[FirstRegIdx + i].Reg,
+                    Offsets[i].UnscaledBytes * 8);
 }
 
 bool AArch64CallLowering::lowerReturn(MachineIRBuilder &MIRBuilder,

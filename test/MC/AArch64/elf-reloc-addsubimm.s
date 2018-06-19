@@ -1,5 +1,7 @@
 // RUN: llvm-mc -triple=aarch64-none-linux-gnu -filetype=obj %s -o - | \
 // RUN:   llvm-objdump -r -d - | FileCheck -check-prefix=OBJ %s
+// RUN: llvm-mc -triple=aarch64-none-linux-gnu -mattr=+sve -filetype=obj %s -o - | \
+// RUN:   llvm-objdump -r -d - | FileCheck -check-prefix=OBJ %s
 
 // OBJ-LABEL: Disassembly of section .text:
 

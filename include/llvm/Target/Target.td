@@ -581,6 +581,17 @@ def ptr_rc : PointerLikeRegClass<0>;
 class unknown_class;
 def unknown : unknown_class;
 
+
+class DiagnosticPredicateClass<code c> {
+  code Predicate;
+  let Predicate = c;
+}
+
+def DP_None  : DiagnosticPredicateClass<[{}]>;
+def DP_IsImm : DiagnosticPredicateClass<[{Operand.isImm()}]>;
+def DP_IsReg : DiagnosticPredicateClass<[{Operand.isReg()}]>;
+def DP_IsTok : DiagnosticPredicateClass<[{Operand.isToken()}]>;
+
 /// AsmOperandClass - Representation for the kinds of operands which the target
 /// specific parser can create and the assembly matcher may need to distinguish.
 ///
@@ -623,6 +634,10 @@ class AsmOperandClass {
   // match failure error message. By default, use a generic "invalid operand"
   // diagnostic. The target AsmParser maps these codes to text.
   string DiagnosticType = "";
+
+  // Only emit the diagnostic of type DiagnosticType if the DiagnosticPredicate
+  // evaluates to true.
+  DiagnosticPredicateClass DiagnosticPredicate = DP_None;
 
   /// Set to 1 if this operand is optional and not always required. Typically,
   /// the AsmParser will emit an error when it finishes parsing an

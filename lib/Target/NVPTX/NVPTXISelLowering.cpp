@@ -166,12 +166,14 @@ static void ComputePTXValueVTs(const TargetLowering &TLI, const DataLayout &DL,
                                SmallVectorImpl<uint64_t> *Offsets = nullptr,
                                uint64_t StartingOffset = 0) {
   SmallVector<EVT, 16> TempVTs;
-  SmallVector<uint64_t, 16> TempOffsets;
+  SmallVector<FieldOffsets, 16> TempOffsets;
 
-  ComputeValueVTs(TLI, DL, Ty, TempVTs, &TempOffsets, StartingOffset);
+  ComputeValueVTs(TLI, DL, Ty, TempVTs, &TempOffsets, {StartingOffset, 0});
   for (unsigned i = 0, e = TempVTs.size(); i != e; ++i) {
     EVT VT = TempVTs[i];
-    uint64_t Off = TempOffsets[i];
+    assert(TempOffsets[i].ScaledBytes == 0 &&
+           "NVPTX Target does not support scalable offsets");
+    uint64_t Off = TempOffsets[i].UnscaledBytes;
     // Split vectors into individual elements, except for v2f16, which
     // we will pass as a single scalar.
     if (VT.isVector()) {

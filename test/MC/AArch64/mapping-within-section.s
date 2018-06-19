@@ -1,4 +1,5 @@
 // RUN: llvm-mc -triple=aarch64-none-linux-gnu -filetype=obj < %s | llvm-objdump -t - | FileCheck %s
+// RUN: llvm-mc -triple=aarch64-none-linux-gnu -mattr=+sve -filetype=obj < %s | llvm-objdump -t - | FileCheck %s
 
     .text
 // $x at 0x0000

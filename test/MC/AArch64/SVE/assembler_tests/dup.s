@@ -1,0 +1,618 @@
+// RUN: llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -mattr=+sve < %s | FileCheck %s
+// RUN: not llvm-mc -triple=aarch64-none-linux-gnu -show-encoding -mattr=-sve 2>&1 < %s | FileCheck --check-prefix=CHECK-ERROR %s
+dup     z23.s, w13  // 00000101-10100000-00111001-10110111
+// CHECK: mov     z23.s, w13 // encoding: [0xb7,0x39,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-00111001-10110111
+DUP     Z23.S, W13  // 00000101-10100000-00111001-10110111
+// CHECK: mov     z23.s, w13 // encoding: [0xb7,0x39,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-00111001-10110111
+dup     z0.h, z0.h[0]  // 00000101-00100010-00100000-00000000
+// CHECK: mov     z0.h, h0 // encoding: [0x00,0x20,0x22,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100010-00100000-00000000
+DUP     Z0.H, Z0.H[0]  // 00000101-00100010-00100000-00000000
+// CHECK: mov     z0.h, h0 // encoding: [0x00,0x20,0x22,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100010-00100000-00000000
+dup     z31.s, #-1, lsl #8  // 00100101-10111000-11111111-11111111
+// CHECK: mov     z31.s, #-256 // encoding: [0xff,0xff,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11111111-11111111
+DUP     Z31.S, #-1, LSL #8  // 00100101-10111000-11111111-11111111
+// CHECK: mov     z31.s, #-256 // encoding: [0xff,0xff,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11111111-11111111
+dup     z31.s, #-256  // 00100101-10111000-11111111-11111111
+// CHECK: mov     z31.s, #-256 // encoding: [0xff,0xff,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11111111-11111111
+DUP     Z31.S, #-256  // 00100101-10111000-11111111-11111111
+// CHECK: mov     z31.s, #-256 // encoding: [0xff,0xff,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11111111-11111111
+dup     z21.d, #-86  // 00100101-11111000-11010101-01010101
+// CHECK: mov     z21.d, #-86 // encoding: [0x55,0xd5,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11010101-01010101
+DUP     Z21.D, #-86  // 00100101-11111000-11010101-01010101
+// CHECK: mov     z21.d, #-86 // encoding: [0x55,0xd5,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11010101-01010101
+dup     z31.d, z31.d[7]  // 00000101-11111000-00100011-11111111
+// CHECK: mov     z31.d, z31.d[7] // encoding: [0xff,0x23,0xf8,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11111000-00100011-11111111
+DUP     Z31.D, Z31.D[7]  // 00000101-11111000-00100011-11111111
+// CHECK: mov     z31.d, z31.d[7] // encoding: [0xff,0x23,0xf8,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11111000-00100011-11111111
+dup     z5.b, #113  // 00100101-00111000-11001110-00100101
+// CHECK: mov     z5.b, #113 // encoding: [0x25,0xce,0x38,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00111000-11001110-00100101
+DUP     Z5.B, #113  // 00100101-00111000-11001110-00100101
+// CHECK: mov     z5.b, #113 // encoding: [0x25,0xce,0x38,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00111000-11001110-00100101
+dup     z5.q, z17.q[3]  // 00000101-11110000-00100010-00100101
+// CHECK: mov     z5.q, z17.q[3] // encoding: [0x25,0x22,0xf0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11110000-00100010-00100101
+DUP     Z5.Q, Z17.Q[3]  // 00000101-11110000-00100010-00100101
+// CHECK: mov     z5.q, z17.q[3] // encoding: [0x25,0x22,0xf0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11110000-00100010-00100101
+dup     z23.s, #109, lsl #8  // 00100101-10111000-11101101-10110111
+// CHECK: mov     z23.s, #27904 // encoding: [0xb7,0xed,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11101101-10110111
+DUP     Z23.S, #109, LSL #8  // 00100101-10111000-11101101-10110111
+// CHECK: mov     z23.s, #27904 // encoding: [0xb7,0xed,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11101101-10110111
+dup     z23.s, #27904  // 00100101-10111000-11101101-10110111
+// CHECK: mov     z23.s, #27904 // encoding: [0xb7,0xed,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11101101-10110111
+DUP     Z23.S, #27904  // 00100101-10111000-11101101-10110111
+// CHECK: mov     z23.s, #27904 // encoding: [0xb7,0xed,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11101101-10110111
+dup     z0.d, x0  // 00000101-11100000-00111000-00000000
+// CHECK: mov     z0.d, x0 // encoding: [0x00,0x38,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-00111000-00000000
+DUP     Z0.D, X0  // 00000101-11100000-00111000-00000000
+// CHECK: mov     z0.d, x0 // encoding: [0x00,0x38,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-00111000-00000000
+dup     z0.b, z0.b[0]  // 00000101-00100001-00100000-00000000
+// CHECK: mov     z0.b, b0 // encoding: [0x00,0x20,0x21,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100001-00100000-00000000
+DUP     Z0.B, Z0.B[0]  // 00000101-00100001-00100000-00000000
+// CHECK: mov     z0.b, b0 // encoding: [0x00,0x20,0x21,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100001-00100000-00000000
+dup     z0.h, z12.h[0]  // 00000101-00100010-00100001-10000000
+// CHECK: mov     z0.h, h12 // encoding: [0x80,0x21,0x22,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100010-00100001-10000000
+DUP     Z0.H, Z12.H[0]  // 00000101-00100010-00100001-10000000
+// CHECK: mov     z0.h, h12 // encoding: [0x80,0x21,0x22,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100010-00100001-10000000
+dup     z0.b, w0  // 00000101-00100000-00111000-00000000
+// CHECK: mov     z0.b, w0 // encoding: [0x00,0x38,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-00111000-00000000
+DUP     Z0.B, W0  // 00000101-00100000-00111000-00000000
+// CHECK: mov     z0.b, w0 // encoding: [0x00,0x38,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-00111000-00000000
+dup     z0.s, w0  // 00000101-10100000-00111000-00000000
+// CHECK: mov     z0.s, w0 // encoding: [0x00,0x38,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-00111000-00000000
+DUP     Z0.S, W0  // 00000101-10100000-00111000-00000000
+// CHECK: mov     z0.s, w0 // encoding: [0x00,0x38,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-00111000-00000000
+dup     z21.q, z10.q[1]  // 00000101-01110000-00100001-01010101
+// CHECK: mov     z21.q, z10.q[1] // encoding: [0x55,0x21,0x70,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01110000-00100001-01010101
+DUP     Z21.Q, Z10.Q[1]  // 00000101-01110000-00100001-01010101
+// CHECK: mov     z21.q, z10.q[1] // encoding: [0x55,0x21,0x70,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01110000-00100001-01010101
+dup     z21.h, #0  // 00100101-01111000-11000000-00010101
+// CHECK: mov     z21.h, #0 // encoding: [0x15,0xc0,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11000000-00010101
+DUP     Z21.H, #0  // 00100101-01111000-11000000-00010101
+// CHECK: mov     z21.h, #0 // encoding: [0x15,0xc0,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11000000-00010101
+dup     z23.h, z13.h[10]  // 00000101-01101010-00100001-10110111
+// CHECK: mov     z23.h, z13.h[10] // encoding: [0xb7,0x21,0x6a,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01101010-00100001-10110111
+DUP     Z23.H, Z13.H[10]  // 00000101-01101010-00100001-10110111
+// CHECK: mov     z23.h, z13.h[10] // encoding: [0xb7,0x21,0x6a,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01101010-00100001-10110111
+dup     z5.s, z17.s[14]  // 00000101-11110100-00100010-00100101
+// CHECK: mov     z5.s, z17.s[14] // encoding: [0x25,0x22,0xf4,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11110100-00100010-00100101
+DUP     Z5.S, Z17.S[14]  // 00000101-11110100-00100010-00100101
+// CHECK: mov     z5.s, z17.s[14] // encoding: [0x25,0x22,0xf4,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11110100-00100010-00100101
+dup     z21.s, z10.s[6]  // 00000101-01110100-00100001-01010101
+// CHECK: mov     z21.s, z10.s[6] // encoding: [0x55,0x21,0x74,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01110100-00100001-01010101
+DUP     Z21.S, Z10.S[6]  // 00000101-01110100-00100001-01010101
+// CHECK: mov     z21.s, z10.s[6] // encoding: [0x55,0x21,0x74,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01110100-00100001-01010101
+dup     z5.h, z17.h[28]  // 00000101-11110010-00100010-00100101
+// CHECK: mov     z5.h, z17.h[28] // encoding: [0x25,0x22,0xf2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11110010-00100010-00100101
+DUP     Z5.H, Z17.H[28]  // 00000101-11110010-00100010-00100101
+// CHECK: mov     z5.h, z17.h[28] // encoding: [0x25,0x22,0xf2,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11110010-00100010-00100101
+dup     z31.q, z31.q[3]  // 00000101-11110000-00100011-11111111
+// CHECK: mov     z31.q, z31.q[3] // encoding: [0xff,0x23,0xf0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11110000-00100011-11111111
+DUP     Z31.Q, Z31.Q[3]  // 00000101-11110000-00100011-11111111
+// CHECK: mov     z31.q, z31.q[3] // encoding: [0xff,0x23,0xf0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11110000-00100011-11111111
+dup     z21.d, x10  // 00000101-11100000-00111001-01010101
+// CHECK: mov     z21.d, x10 // encoding: [0x55,0x39,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-00111001-01010101
+DUP     Z21.D, X10  // 00000101-11100000-00111001-01010101
+// CHECK: mov     z21.d, x10 // encoding: [0x55,0x39,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-00111001-01010101
+dup     z0.q, z12.q[0]  // 00000101-00110000-00100001-10000000
+// CHECK: mov     z0.q, q12 // encoding: [0x80,0x21,0x30,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00110000-00100001-10000000
+DUP     Z0.Q, Z12.Q[0]  // 00000101-00110000-00100001-10000000
+// CHECK: mov     z0.q, q12 // encoding: [0x80,0x21,0x30,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00110000-00100001-10000000
+dup     z5.d, z17.d[7]  // 00000101-11111000-00100010-00100101
+// CHECK: mov     z5.d, z17.d[7] // encoding: [0x25,0x22,0xf8,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11111000-00100010-00100101
+DUP     Z5.D, Z17.D[7]  // 00000101-11111000-00100010-00100101
+// CHECK: mov     z5.d, z17.d[7] // encoding: [0x25,0x22,0xf8,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11111000-00100010-00100101
+dup     z21.h, w10  // 00000101-01100000-00111001-01010101
+// CHECK: mov     z21.h, w10 // encoding: [0x55,0x39,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-00111001-01010101
+DUP     Z21.H, W10  // 00000101-01100000-00111001-01010101
+// CHECK: mov     z21.h, w10 // encoding: [0x55,0x39,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-00111001-01010101
+dup     z21.b, w10  // 00000101-00100000-00111001-01010101
+// CHECK: mov     z21.b, w10 // encoding: [0x55,0x39,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-00111001-01010101
+DUP     Z21.B, W10  // 00000101-00100000-00111001-01010101
+// CHECK: mov     z21.b, w10 // encoding: [0x55,0x39,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-00111001-01010101
+dup     z31.h, wsp  // 00000101-01100000-00111011-11111111
+// CHECK: mov     z31.h, wsp // encoding: [0xff,0x3b,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-00111011-11111111
+DUP     Z31.H, WSP  // 00000101-01100000-00111011-11111111
+// CHECK: mov     z31.h, wsp // encoding: [0xff,0x3b,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-00111011-11111111
+dup     z21.s, #0  // 00100101-10111000-11000000-00010101
+// CHECK: mov     z21.s, #0 // encoding: [0x15,0xc0,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11000000-00010101
+DUP     Z21.S, #0  // 00100101-10111000-11000000-00010101
+// CHECK: mov     z21.s, #0 // encoding: [0x15,0xc0,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11000000-00010101
+dup     z23.d, #0  // 00100101-11111000-11000000-00010111
+// CHECK: mov     z23.d, #0 // encoding: [0x17,0xc0,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11000000-00010111
+DUP     Z23.D, #0  // 00100101-11111000-11000000-00010111
+// CHECK: mov     z23.d, #0 // encoding: [0x17,0xc0,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11000000-00010111
+dup     z0.s, #0  // 00100101-10111000-11000000-00000000
+// CHECK: mov     z0.s, #0 // encoding: [0x00,0xc0,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11000000-00000000
+DUP     Z0.S, #0  // 00100101-10111000-11000000-00000000
+// CHECK: mov     z0.s, #0 // encoding: [0x00,0xc0,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11000000-00000000
+dup     z31.h, #0  // 00100101-01111000-11000000-00011111
+// CHECK: mov     z31.h, #0 // encoding: [0x1f,0xc0,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11000000-00011111
+DUP     Z31.H, #0  // 00100101-01111000-11000000-00011111
+// CHECK: mov     z31.h, #0 // encoding: [0x1f,0xc0,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11000000-00011111
+dup     z21.h, #-86  // 00100101-01111000-11010101-01010101
+// CHECK: mov     z21.h, #-86 // encoding: [0x55,0xd5,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11010101-01010101
+DUP     Z21.H, #-86  // 00100101-01111000-11010101-01010101
+// CHECK: mov     z21.h, #-86 // encoding: [0x55,0xd5,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11010101-01010101
+dup     z5.b, z17.b[56]  // 00000101-11110001-00100010-00100101
+// CHECK: mov     z5.b, z17.b[56] // encoding: [0x25,0x22,0xf1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11110001-00100010-00100101
+DUP     Z5.B, Z17.B[56]  // 00000101-11110001-00100010-00100101
+// CHECK: mov     z5.b, z17.b[56] // encoding: [0x25,0x22,0xf1,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11110001-00100010-00100101
+dup     z23.h, w13  // 00000101-01100000-00111001-10110111
+// CHECK: mov     z23.h, w13 // encoding: [0xb7,0x39,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-00111001-10110111
+DUP     Z23.H, W13  // 00000101-01100000-00111001-10110111
+// CHECK: mov     z23.h, w13 // encoding: [0xb7,0x39,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-00111001-10110111
+dup     z0.d, z0.d[0]  // 00000101-00101000-00100000-00000000
+// CHECK: mov     z0.d, d0 // encoding: [0x00,0x20,0x28,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00101000-00100000-00000000
+DUP     Z0.D, Z0.D[0]  // 00000101-00101000-00100000-00000000
+// CHECK: mov     z0.d, d0 // encoding: [0x00,0x20,0x28,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00101000-00100000-00000000
+dup     z31.s, #0  // 00100101-10111000-11000000-00011111
+// CHECK: mov     z31.s, #0 // encoding: [0x1f,0xc0,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11000000-00011111
+DUP     Z31.S, #0  // 00100101-10111000-11000000-00011111
+// CHECK: mov     z31.s, #0 // encoding: [0x1f,0xc0,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11000000-00011111
+dup     z31.h, #-1, lsl #8  // 00100101-01111000-11111111-11111111
+// CHECK: mov     z31.h, #-256 // encoding: [0xff,0xff,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11111111-11111111
+DUP     Z31.H, #-1, LSL #8  // 00100101-01111000-11111111-11111111
+// CHECK: mov     z31.h, #-256 // encoding: [0xff,0xff,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11111111-11111111
+dup     z31.h, #-256  // 00100101-01111000-11111111-11111111
+// CHECK: mov     z31.h, #-256 // encoding: [0xff,0xff,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11111111-11111111
+DUP     Z31.H, #-256  // 00100101-01111000-11111111-11111111
+// CHECK: mov     z31.h, #-256 // encoding: [0xff,0xff,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11111111-11111111
+dup     z31.h, z31.h[31]  // 00000101-11111110-00100011-11111111
+// CHECK: mov     z31.h, z31.h[31] // encoding: [0xff,0x23,0xfe,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11111110-00100011-11111111
+DUP     Z31.H, Z31.H[31]  // 00000101-11111110-00100011-11111111
+// CHECK: mov     z31.h, z31.h[31] // encoding: [0xff,0x23,0xfe,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11111110-00100011-11111111
+dup     z21.h, z10.h[13]  // 00000101-01110110-00100001-01010101
+// CHECK: mov     z21.h, z10.h[13] // encoding: [0x55,0x21,0x76,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01110110-00100001-01010101
+DUP     Z21.H, Z10.H[13]  // 00000101-01110110-00100001-01010101
+// CHECK: mov     z21.h, z10.h[13] // encoding: [0x55,0x21,0x76,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01110110-00100001-01010101
+dup     z0.h, #0  // 00100101-01111000-11000000-00000000
+// CHECK: mov     z0.h, #0 // encoding: [0x00,0xc0,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11000000-00000000
+DUP     Z0.H, #0  // 00100101-01111000-11000000-00000000
+// CHECK: mov     z0.h, #0 // encoding: [0x00,0xc0,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11000000-00000000
+dup     z0.h, w0  // 00000101-01100000-00111000-00000000
+// CHECK: mov     z0.h, w0 // encoding: [0x00,0x38,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-00111000-00000000
+DUP     Z0.H, W0  // 00000101-01100000-00111000-00000000
+// CHECK: mov     z0.h, w0 // encoding: [0x00,0x38,0x60,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01100000-00111000-00000000
+dup     z31.d, #-1, lsl #8  // 00100101-11111000-11111111-11111111
+// CHECK: mov     z31.d, #-256 // encoding: [0xff,0xff,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11111111-11111111
+DUP     Z31.D, #-1, LSL #8  // 00100101-11111000-11111111-11111111
+// CHECK: mov     z31.d, #-256 // encoding: [0xff,0xff,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11111111-11111111
+dup     z31.d, #-256  // 00100101-11111000-11111111-11111111
+// CHECK: mov     z31.d, #-256 // encoding: [0xff,0xff,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11111111-11111111
+DUP     Z31.D, #-256  // 00100101-11111000-11111111-11111111
+// CHECK: mov     z31.d, #-256 // encoding: [0xff,0xff,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11111111-11111111
+dup     z31.s, wsp  // 00000101-10100000-00111011-11111111
+// CHECK: mov     z31.s, wsp // encoding: [0xff,0x3b,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-00111011-11111111
+DUP     Z31.S, WSP  // 00000101-10100000-00111011-11111111
+// CHECK: mov     z31.s, wsp // encoding: [0xff,0x3b,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-00111011-11111111
+dup     z23.b, z13.b[20]  // 00000101-01101001-00100001-10110111
+// CHECK: mov     z23.b, z13.b[20] // encoding: [0xb7,0x21,0x69,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01101001-00100001-10110111
+DUP     Z23.B, Z13.B[20]  // 00000101-01101001-00100001-10110111
+// CHECK: mov     z23.b, z13.b[20] // encoding: [0xb7,0x21,0x69,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01101001-00100001-10110111
+dup     z23.h, #109, lsl #8  // 00100101-01111000-11101101-10110111
+// CHECK: mov     z23.h, #27904 // encoding: [0xb7,0xed,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11101101-10110111
+DUP     Z23.H, #109, LSL #8  // 00100101-01111000-11101101-10110111
+// CHECK: mov     z23.h, #27904 // encoding: [0xb7,0xed,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11101101-10110111
+dup     z23.h, #27904  // 00100101-01111000-11101101-10110111
+// CHECK: mov     z23.h, #27904 // encoding: [0xb7,0xed,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11101101-10110111
+DUP     Z23.H, #27904  // 00100101-01111000-11101101-10110111
+// CHECK: mov     z23.h, #27904 // encoding: [0xb7,0xed,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11101101-10110111
+dup     z23.b, w13  // 00000101-00100000-00111001-10110111
+// CHECK: mov     z23.b, w13 // encoding: [0xb7,0x39,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-00111001-10110111
+DUP     Z23.B, W13  // 00000101-00100000-00111001-10110111
+// CHECK: mov     z23.b, w13 // encoding: [0xb7,0x39,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-00111001-10110111
+dup     z31.d, #0  // 00100101-11111000-11000000-00011111
+// CHECK: mov     z31.d, #0 // encoding: [0x1f,0xc0,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11000000-00011111
+DUP     Z31.D, #0  // 00100101-11111000-11000000-00011111
+// CHECK: mov     z31.d, #0 // encoding: [0x1f,0xc0,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11000000-00011111
+dup     z0.b, #0  // 00100101-00111000-11000000-00000000
+// CHECK: mov     z0.b, #0 // encoding: [0x00,0xc0,0x38,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00111000-11000000-00000000
+DUP     Z0.B, #0  // 00100101-00111000-11000000-00000000
+// CHECK: mov     z0.b, #0 // encoding: [0x00,0xc0,0x38,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00111000-11000000-00000000
+dup     z21.s, w10  // 00000101-10100000-00111001-01010101
+// CHECK: mov     z21.s, w10 // encoding: [0x55,0x39,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-00111001-01010101
+DUP     Z21.S, W10  // 00000101-10100000-00111001-01010101
+// CHECK: mov     z21.s, w10 // encoding: [0x55,0x39,0xa0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-10100000-00111001-01010101
+dup     z23.h, #0  // 00100101-01111000-11000000-00010111
+// CHECK: mov     z23.h, #0 // encoding: [0x17,0xc0,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11000000-00010111
+DUP     Z23.H, #0  // 00100101-01111000-11000000-00010111
+// CHECK: mov     z23.h, #0 // encoding: [0x17,0xc0,0x78,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-01111000-11000000-00010111
+dup     z31.d, sp  // 00000101-11100000-00111011-11111111
+// CHECK: mov     z31.d, sp // encoding: [0xff,0x3b,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-00111011-11111111
+DUP     Z31.D, SP  // 00000101-11100000-00111011-11111111
+// CHECK: mov     z31.d, sp // encoding: [0xff,0x3b,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-00111011-11111111
+dup     z23.d, #109, lsl #8  // 00100101-11111000-11101101-10110111
+// CHECK: mov     z23.d, #27904 // encoding: [0xb7,0xed,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11101101-10110111
+DUP     Z23.D, #109, LSL #8  // 00100101-11111000-11101101-10110111
+// CHECK: mov     z23.d, #27904 // encoding: [0xb7,0xed,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11101101-10110111
+dup     z23.d, #27904  // 00100101-11111000-11101101-10110111
+// CHECK: mov     z23.d, #27904 // encoding: [0xb7,0xed,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11101101-10110111
+DUP     Z23.D, #27904  // 00100101-11111000-11101101-10110111
+// CHECK: mov     z23.d, #27904 // encoding: [0xb7,0xed,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11101101-10110111
+dup     z31.b, wsp  // 00000101-00100000-00111011-11111111
+// CHECK: mov     z31.b, wsp // encoding: [0xff,0x3b,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-00111011-11111111
+DUP     Z31.B, WSP  // 00000101-00100000-00111011-11111111
+// CHECK: mov     z31.b, wsp // encoding: [0xff,0x3b,0x20,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100000-00111011-11111111
+dup     z31.b, z31.b[63]  // 00000101-11111111-00100011-11111111
+// CHECK: mov     z31.b, z31.b[63] // encoding: [0xff,0x23,0xff,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11111111-00100011-11111111
+DUP     Z31.B, Z31.B[63]  // 00000101-11111111-00100011-11111111
+// CHECK: mov     z31.b, z31.b[63] // encoding: [0xff,0x23,0xff,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11111111-00100011-11111111
+dup     z21.b, z10.b[26]  // 00000101-01110101-00100001-01010101
+// CHECK: mov     z21.b, z10.b[26] // encoding: [0x55,0x21,0x75,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01110101-00100001-01010101
+DUP     Z21.B, Z10.B[26]  // 00000101-01110101-00100001-01010101
+// CHECK: mov     z21.b, z10.b[26] // encoding: [0x55,0x21,0x75,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01110101-00100001-01010101
+dup     z0.q, z0.q[0]  // 00000101-00110000-00100000-00000000
+// CHECK: mov     z0.q, q0 // encoding: [0x00,0x20,0x30,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00110000-00100000-00000000
+DUP     Z0.Q, Z0.Q[0]  // 00000101-00110000-00100000-00000000
+// CHECK: mov     z0.q, q0 // encoding: [0x00,0x20,0x30,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00110000-00100000-00000000
+dup     z21.s, #-86  // 00100101-10111000-11010101-01010101
+// CHECK: mov     z21.s, #-86 // encoding: [0x55,0xd5,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11010101-01010101
+DUP     Z21.S, #-86  // 00100101-10111000-11010101-01010101
+// CHECK: mov     z21.s, #-86 // encoding: [0x55,0xd5,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11010101-01010101
+dup     z0.d, #0  // 00100101-11111000-11000000-00000000
+// CHECK: mov     z0.d, #0 // encoding: [0x00,0xc0,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11000000-00000000
+DUP     Z0.D, #0  // 00100101-11111000-11000000-00000000
+// CHECK: mov     z0.d, #0 // encoding: [0x00,0xc0,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11000000-00000000
+dup     z31.s, z31.s[15]  // 00000101-11111100-00100011-11111111
+// CHECK: mov     z31.s, z31.s[15] // encoding: [0xff,0x23,0xfc,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11111100-00100011-11111111
+DUP     Z31.S, Z31.S[15]  // 00000101-11111100-00100011-11111111
+// CHECK: mov     z31.s, z31.s[15] // encoding: [0xff,0x23,0xfc,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11111100-00100011-11111111
+dup     z0.d, z12.d[0]  // 00000101-00101000-00100001-10000000
+// CHECK: mov     z0.d, d12 // encoding: [0x80,0x21,0x28,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00101000-00100001-10000000
+DUP     Z0.D, Z12.D[0]  // 00000101-00101000-00100001-10000000
+// CHECK: mov     z0.d, d12 // encoding: [0x80,0x21,0x28,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00101000-00100001-10000000
+dup     z21.d, z10.d[3]  // 00000101-01111000-00100001-01010101
+// CHECK: mov     z21.d, z10.d[3] // encoding: [0x55,0x21,0x78,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01111000-00100001-01010101
+DUP     Z21.D, Z10.D[3]  // 00000101-01111000-00100001-01010101
+// CHECK: mov     z21.d, z10.d[3] // encoding: [0x55,0x21,0x78,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01111000-00100001-01010101
+dup     z23.d, z13.d[2]  // 00000101-01101000-00100001-10110111
+// CHECK: mov     z23.d, z13.d[2] // encoding: [0xb7,0x21,0x68,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01101000-00100001-10110111
+DUP     Z23.D, Z13.D[2]  // 00000101-01101000-00100001-10110111
+// CHECK: mov     z23.d, z13.d[2] // encoding: [0xb7,0x21,0x68,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01101000-00100001-10110111
+dup     z23.s, #0  // 00100101-10111000-11000000-00010111
+// CHECK: mov     z23.s, #0 // encoding: [0x17,0xc0,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11000000-00010111
+DUP     Z23.S, #0  // 00100101-10111000-11000000-00010111
+// CHECK: mov     z23.s, #0 // encoding: [0x17,0xc0,0xb8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-10111000-11000000-00010111
+dup     z21.d, #0  // 00100101-11111000-11000000-00010101
+// CHECK: mov     z21.d, #0 // encoding: [0x15,0xc0,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11000000-00010101
+DUP     Z21.D, #0  // 00100101-11111000-11000000-00010101
+// CHECK: mov     z21.d, #0 // encoding: [0x15,0xc0,0xf8,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-11111000-11000000-00010101
+dup     z21.b, #-86  // 00100101-00111000-11010101-01010101
+// CHECK: mov     z21.b, #-86 // encoding: [0x55,0xd5,0x38,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00111000-11010101-01010101
+DUP     Z21.B, #-86  // 00100101-00111000-11010101-01010101
+// CHECK: mov     z21.b, #-86 // encoding: [0x55,0xd5,0x38,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00111000-11010101-01010101
+dup     z23.s, z13.s[5]  // 00000101-01101100-00100001-10110111
+// CHECK: mov     z23.s, z13.s[5] // encoding: [0xb7,0x21,0x6c,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01101100-00100001-10110111
+DUP     Z23.S, Z13.S[5]  // 00000101-01101100-00100001-10110111
+// CHECK: mov     z23.s, z13.s[5] // encoding: [0xb7,0x21,0x6c,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01101100-00100001-10110111
+dup     z1.b, #33  // 00100101-00111000-11000100-00100001
+// CHECK: mov     z1.b, #33 // encoding: [0x21,0xc4,0x38,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00111000-11000100-00100001
+DUP     Z1.B, #33  // 00100101-00111000-11000100-00100001
+// CHECK: mov     z1.b, #33 // encoding: [0x21,0xc4,0x38,0x25]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00100101-00111000-11000100-00100001
+dup     z24.q, z19.q[0]  // 00000101-00110000-00100010-01111000
+// CHECK: mov     z24.q, q19 // encoding: [0x78,0x22,0x30,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00110000-00100010-01111000
+DUP     Z24.Q, Z19.Q[0]  // 00000101-00110000-00100010-01111000
+// CHECK: mov     z24.q, q19 // encoding: [0x78,0x22,0x30,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00110000-00100010-01111000
+dup     z0.s, z12.s[0]  // 00000101-00100100-00100001-10000000
+// CHECK: mov     z0.s, s12 // encoding: [0x80,0x21,0x24,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100100-00100001-10000000
+DUP     Z0.S, Z12.S[0]  // 00000101-00100100-00100001-10000000
+// CHECK: mov     z0.s, s12 // encoding: [0x80,0x21,0x24,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100100-00100001-10000000
+dup     z23.q, z13.q[1]  // 00000101-01110000-00100001-10110111
+// CHECK: mov     z23.q, z13.q[1] // encoding: [0xb7,0x21,0x70,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01110000-00100001-10110111
+DUP     Z23.Q, Z13.Q[1]  // 00000101-01110000-00100001-10110111
+// CHECK: mov     z23.q, z13.q[1] // encoding: [0xb7,0x21,0x70,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-01110000-00100001-10110111
+dup     z0.s, z0.s[0]  // 00000101-00100100-00100000-00000000
+// CHECK: mov     z0.s, s0 // encoding: [0x00,0x20,0x24,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100100-00100000-00000000
+DUP     Z0.S, Z0.S[0]  // 00000101-00100100-00100000-00000000
+// CHECK: mov     z0.s, s0 // encoding: [0x00,0x20,0x24,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-00100100-00100000-00000000
+dup     z23.d, x13  // 00000101-11100000-00111001-10110111
+// CHECK: mov     z23.d, x13 // encoding: [0xb7,0x39,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-00111001-10110111
+DUP     Z23.D, X13  // 00000101-11100000-00111001-10110111
+// CHECK: mov     z23.d, x13 // encoding: [0xb7,0x39,0xe0,0x05]
+// CHECK-ERROR: instruction requires: sve
+// CHECK-ERROR-NEXT: 00000101-11100000-00111001-10110111

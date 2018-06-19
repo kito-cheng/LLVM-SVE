@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=arm64-eabi -mcpu=cyclone < %s | FileCheck %s
+; RUN: llc -mtriple=arm64-eabi -mcpu=cyclone -aarch64-sve-postvec=false < %s | FileCheck %s
 
 ; CHECK: foo
 ; CHECK-DAG: str w[[REG0:[0-9]+]], [x19, #132]

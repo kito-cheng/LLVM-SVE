@@ -14,6 +14,7 @@
 #ifndef LLVM_TARGET_TARGETFRAMELOWERING_H
 #define LLVM_TARGET_TARGETFRAMELOWERING_H
 
+#include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include <utility>
 #include <vector>
@@ -325,6 +326,16 @@ public:
   virtual bool canUseAsEpilogue(const MachineBasicBlock &MBB) const {
     return true;
   }
+  /// Register handlers for StackRegions - By default there are no additional
+  /// StackRegions other than the default one, but a target may choose to allocate
+  /// certain types or registers on a separate StackRegion.
+  virtual void registerStackRegions(MachineFunction &MF) const {}
+
+  /// Layout of StackRegions is Target specific
+  virtual void layoutStackRegions(MachineFunction &MF) const {}
+
+  /// Returns true if the MachineFunction has variable sized StackRegionss
+  virtual bool hasVarSizedRegions(const MachineFunction &MF) const { return false; }
 
   /// Check if given function is safe for not having callee saved registers.
   /// This is used when interprocedural register allocation is enabled.

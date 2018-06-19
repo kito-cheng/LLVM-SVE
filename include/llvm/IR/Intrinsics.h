@@ -100,7 +100,9 @@ namespace Intrinsic {
       Void, VarArg, MMX, Token, Metadata, Half, Float, Double,
       Integer, Vector, Pointer, Struct,
       Argument, ExtendArgument, TruncArgument, HalfVecArgument,
-      SameVecWidthArgument, PtrToArgument, PtrToElt, VecOfAnyPtrsToElt
+      SameVecWidthArgument, PtrToArgument, PtrToElt, VecOfAnyPtrsToElt,
+      ScalableVecArgument, VecElementArgument, DoubleVecArgument,
+      VecOfBitcastsToInt, Subdivide2Argument, Subdivide4Argument
     } Kind;
 
     union {
@@ -124,13 +126,20 @@ namespace Intrinsic {
       assert(Kind == Argument || Kind == ExtendArgument ||
              Kind == TruncArgument || Kind == HalfVecArgument ||
              Kind == SameVecWidthArgument || Kind == PtrToArgument ||
-             Kind == PtrToElt);
+             Kind == PtrToElt || Kind == VecOfAnyPtrsToElt ||
+             Kind == VecElementArgument || Kind == DoubleVecArgument ||
+             Kind == VecOfBitcastsToInt || Kind == Subdivide2Argument ||
+             Kind == Subdivide4Argument);
       return Argument_Info >> 3;
     }
     ArgKind getArgumentKind() const {
       assert(Kind == Argument || Kind == ExtendArgument ||
              Kind == TruncArgument || Kind == HalfVecArgument ||
-             Kind == SameVecWidthArgument || Kind == PtrToArgument);
+             Kind == SameVecWidthArgument || Kind == PtrToArgument ||
+             Kind == PtrToElt || Kind == VecOfAnyPtrsToElt ||
+             Kind == VecElementArgument || Kind == DoubleVecArgument ||
+             Kind == VecOfBitcastsToInt || Kind == Subdivide2Argument ||
+             Kind == Subdivide4Argument);
       return (ArgKind)(Argument_Info & 7);
     }
 
@@ -169,7 +178,8 @@ namespace Intrinsic {
   /// Returns false if the given type matches with the constraints, true
   /// otherwise.
   bool matchIntrinsicType(Type *Ty, ArrayRef<IITDescriptor> &Infos,
-                          SmallVectorImpl<Type*> &ArgTys);
+                          SmallVectorImpl<Type*> &ArgTys,
+                          unsigned &ArgCount);
 
   /// Verify if the intrinsic has variable arguments. This method is intended to
   /// be called after all the fixed arguments have been matched first.
@@ -181,6 +191,11 @@ namespace Intrinsic {
   // returns the declaration with the same signature and remangled name.
   llvm::Optional<Function*> remangleIntrinsicFunction(Function *F);
 
+  /// Pre-calculate intrinsic types so that matchIntrinsicType can handle
+  /// forward references of overloaded types.
+  void addOverloadedArgTypes(Type *Ty,
+                             ArrayRef<Intrinsic::IITDescriptor> &Infos,
+                             SmallVectorImpl<Type *> &ArgTys);
 } // End Intrinsic namespace
 
 } // End llvm namespace

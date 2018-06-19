@@ -26,7 +26,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "BranchFolding.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
@@ -39,19 +42,33 @@
 #include "llvm/CodeGen/MachineLoopInfo.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachinePostDominators.h"
-#include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TailDuplicator.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
+#include "llvm/IR/DebugLoc.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/Allocator.h"
+#include "llvm/Support/BlockFrequency.h"
+#include "llvm/Support/BranchProbability.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetLowering.h"
+#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
 #include <algorithm>
-#include <functional>
+#include <cassert>
+#include <cstdint>
+#include <iterator>
+#include <memory>
+#include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
+
 using namespace llvm;
 
 #define DEBUG_TYPE "block-placement"
@@ -211,14 +228,14 @@ public:
   /// function. It also registers itself as the chain that block participates
   /// in with the BlockToChain mapping.
   BlockChain(BlockToChainMapType &BlockToChain, MachineBasicBlock *BB)
-      : Blocks(1, BB), BlockToChain(BlockToChain), UnscheduledPredecessors(0) {
+      : Blocks(1, BB), BlockToChain(BlockToChain) {
     assert(BB && "Cannot create a chain with a null basic block");
     BlockToChain[BB] = this;
   }
 
   /// \brief Iterator over blocks within the chain.
-  typedef SmallVectorImpl<MachineBasicBlock *>::iterator iterator;
-  typedef SmallVectorImpl<MachineBasicBlock *>::const_iterator const_iterator;
+  using iterator = SmallVectorImpl<MachineBasicBlock *>::iterator;
+  using const_iterator = SmallVectorImpl<MachineBasicBlock *>::const_iterator;
 
   /// \brief Beginning of blocks within the chain.
   iterator begin() { return Blocks.begin(); }
@@ -286,14 +303,12 @@ public:
   ///
   /// Note: This field is reinitialized multiple times - once for each loop,
   /// and then once for the function as a whole.
-  unsigned UnscheduledPredecessors;
+  unsigned UnscheduledPredecessors = 0;
 };
-}
 
-namespace {
 class MachineBlockPlacement : public MachineFunctionPass {
-  /// \brief A typedef for a block filter set.
-  typedef SmallSetVector<const MachineBasicBlock *, 16> BlockFilterSet;
+  /// \brief A type for a block filter set.
+  using BlockFilterSet = SmallSetVector<const MachineBasicBlock *, 16>;
 
   /// Pair struct containing basic block and taildup profitiability
   struct BlockAndTailDupResult {
@@ -1534,10 +1549,10 @@ MachineBasicBlock *MachineBlockPlacement::selectBestCandidateBlock(
   // worklist of already placed entries.
   // FIXME: If this shows up on profiles, it could be folded (at the cost of
   // some code complexity) into the loop below.
-  WorkList.erase(remove_if(WorkList,
-                           [&](MachineBasicBlock *BB) {
-                             return BlockToChain.lookup(BB) == &Chain;
-                           }),
+  WorkList.erase(llvm::remove_if(WorkList,
+                                 [&](MachineBasicBlock *BB) {
+                                   return BlockToChain.lookup(BB) == &Chain;
+                                 }),
                  WorkList.end());
 
   if (WorkList.empty())
@@ -1659,7 +1674,7 @@ void MachineBlockPlacement::buildChain(
   const MachineBasicBlock *LoopHeaderBB = HeadBB;
   markChainSuccessors(Chain, LoopHeaderBB, BlockFilter);
   MachineBasicBlock *BB = *std::prev(Chain.end());
-  for (;;) {
+  while (true) {
     assert(BB && "null block found at end of chain in loop.");
     assert(BlockToChain[BB] == &Chain && "BlockToChainMap mis-match in loop.");
     assert(*std::prev(Chain.end()) == BB && "BB Not found at end of chain.");
@@ -1945,7 +1960,7 @@ void MachineBlockPlacement::rotateLoop(BlockChain &LoopChain,
     }
   }
 
-  BlockChain::iterator ExitIt = find(LoopChain, ExitingBB);
+  BlockChain::iterator ExitIt = llvm::find(LoopChain, ExitingBB);
   if (ExitIt == LoopChain.end())
     return;
 
@@ -1999,7 +2014,7 @@ void MachineBlockPlacement::rotateLoopWithProfile(
     BlockChain &LoopChain, const MachineLoop &L,
     const BlockFilterSet &LoopBlockSet) {
   auto HeaderBB = L.getHeader();
-  auto HeaderIter = find(LoopChain, HeaderBB);
+  auto HeaderIter = llvm::find(LoopChain, HeaderBB);
   auto RotationPos = LoopChain.end();
 
   BlockFrequency SmallestRotationCost = BlockFrequency::getMaxFrequency();
@@ -2272,7 +2287,7 @@ void MachineBlockPlacement::buildCFGChains() {
         new (ChainAllocator.Allocate()) BlockChain(BlockToChain, BB);
     // Also, merge any blocks which we cannot reason about and must preserve
     // the exact fallthrough behavior for.
-    for (;;) {
+    while (true) {
       Cond.clear();
       MachineBasicBlock *TBB = nullptr, *FBB = nullptr; // For AnalyzeBranch.
       if (!TII->analyzeBranch(*BB, TBB, FBB, Cond) || !FI->canFallThrough())
@@ -2313,7 +2328,7 @@ void MachineBlockPlacement::buildCFGChains() {
   buildChain(&F->front(), FunctionChain);
 
 #ifndef NDEBUG
-  typedef SmallPtrSet<MachineBasicBlock *, 16> FunctionBlockSetType;
+  using FunctionBlockSetType = SmallPtrSet<MachineBasicBlock *, 16>;
 #endif
   DEBUG({
     // Crash at the end so we get all of the debugging output first.
@@ -2545,8 +2560,8 @@ bool MachineBlockPlacement::repeatedlyTailDuplicateBlock(
   // duplicated from here on are already scheduled.
   // Note that DuplicatedToLPred always implies Removed.
   while (DuplicatedToLPred) {
-    assert (Removed && "Block must have been removed to be duplicated into its "
-            "layout predecessor.");
+    assert(Removed && "Block must have been removed to be duplicated into its "
+           "layout predecessor.");
     MachineBasicBlock *DupBB, *DupPred;
     // The removal callback causes Chain.end() to be updated when a block is
     // removed. On the first pass through the loop, the chain end should be the
@@ -2629,8 +2644,10 @@ bool MachineBlockPlacement::maybeTailDuplicateBlock(
           if (RemBB->isEHPad())
             RemoveList = EHPadWorkList;
           RemoveList.erase(
-              remove_if(RemoveList,
-                        [RemBB](MachineBasicBlock *BB) {return BB == RemBB;}),
+              llvm::remove_if(RemoveList,
+                              [RemBB](MachineBasicBlock *BB) {
+                                return BB == RemBB;
+                              }),
               RemoveList.end());
         }
 
@@ -2648,7 +2665,7 @@ bool MachineBlockPlacement::maybeTailDuplicateBlock(
               << getBlockName(RemBB) << "\n");
       };
   auto RemovalCallbackRef =
-      llvm::function_ref<void(MachineBasicBlock*)>(RemovalCallback);
+      function_ref<void(MachineBasicBlock*)>(RemovalCallback);
 
   SmallVector<MachineBasicBlock *, 8> DuplicatedPreds;
   bool IsSimple = TailDup.isSimpleBB(BB);
@@ -2817,7 +2834,8 @@ public:
     MachineFunctionPass::getAnalysisUsage(AU);
   }
 };
-}
+
+} // end anonymous namespace
 
 char MachineBlockPlacementStats::ID = 0;
 char &llvm::MachineBlockPlacementStatsID = MachineBlockPlacementStats::ID;

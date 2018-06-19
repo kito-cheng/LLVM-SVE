@@ -155,11 +155,15 @@ public:
   /// Make a register of the specific register class
   /// available and do the appropriate bookkeeping. SPAdj is the stack
   /// adjustment due to call frame, it's passed along to eliminateFrameIndex().
+  /// SRLiveRangeEndsHere can help to signal the register scavenger that it may
+  /// reuse the destination register of 'I' if there is no overlap due to
+  /// early clobber.
   /// Returns the scavenged register.
   /// This is deprecated as it depends on the quality of the kill flags being
   /// present; Use scavengeRegisterBackwards() instead!
   unsigned scavengeRegister(const TargetRegisterClass *RegClass,
-                            MachineBasicBlock::iterator I, int SPAdj);
+                            MachineBasicBlock::iterator I, int SPAdj,
+                            bool SRLiveRangeEndsHere = false);
   unsigned scavengeRegister(const TargetRegisterClass *RegClass, int SPAdj) {
     return scavengeRegister(RegClass, MBBI, SPAdj);
   }

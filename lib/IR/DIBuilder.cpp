@@ -576,6 +576,10 @@ DISubrange *DIBuilder::getOrCreateSubrange(int64_t Lo, int64_t Count) {
   return DISubrange::get(VMContext, Count, Lo);
 }
 
+DISubrange *DIBuilder::getOrCreateSubrange(int64_t Lo, Metadata *CountNode) {
+  return DISubrange::get(VMContext, CountNode, Lo);
+}
+
 static void checkGlobalVariableScope(DIScope *Context) {
 #ifndef NDEBUG
   if (auto *CT =
@@ -595,6 +599,8 @@ DIGlobalVariableExpression *DIBuilder::createGlobalVariableExpression(
       VMContext, cast_or_null<DIScope>(Context), Name, LinkageName, F,
       LineNumber, Ty, isLocalToUnit, true, cast_or_null<DIDerivedType>(Decl),
       AlignInBits);
+  if (!Expr)
+    Expr = createExpression();
   auto *N = DIGlobalVariableExpression::get(VMContext, GV, Expr);
   AllGVs.push_back(N);
   return N;
@@ -666,12 +672,6 @@ DIExpression *DIBuilder::createExpression(ArrayRef<int64_t> Signed) {
   // TODO: Remove the callers of this signed version and delete.
   SmallVector<uint64_t, 8> Addr(Signed.begin(), Signed.end());
   return createExpression(Addr);
-}
-
-DIExpression *DIBuilder::createFragmentExpression(unsigned OffsetInBytes,
-                                                  unsigned SizeInBytes) {
-  uint64_t Addr[] = {dwarf::DW_OP_LLVM_fragment, OffsetInBytes, SizeInBytes};
-  return DIExpression::get(VMContext, Addr);
 }
 
 template <class... Ts>
@@ -751,9 +751,12 @@ DINamespace *DIBuilder::createNameSpace(DIScope *Scope, StringRef Name,
 DIModule *DIBuilder::createModule(DIScope *Scope, StringRef Name,
                                   StringRef ConfigurationMacros,
                                   StringRef IncludePath,
-                                  StringRef ISysRoot) {
+                                  StringRef ISysRoot, DIFile *File,
+                                  unsigned LineNo) {
+
  return DIModule::get(VMContext, getNonCompileUnitScope(Scope), Name,
-                      ConfigurationMacros, IncludePath, ISysRoot);
+                      ConfigurationMacros, IncludePath, ISysRoot, File,
+                      LineNo);
 }
 
 DILexicalBlockFile *DIBuilder::createLexicalBlockFile(DIScope *Scope,
@@ -823,7 +826,7 @@ Instruction *DIBuilder::insertDeclare(Value *Storage, DILocalVariable *VarInfo,
   return withDebugLoc(CallInst::Create(DeclareFn, Args, "", InsertAtEnd), DL);
 }
 
-Instruction *DIBuilder::insertDbgValueIntrinsic(Value *V, uint64_t Offset,
+Instruction *DIBuilder::insertDbgValueIntrinsic(Value *V,
                                                 DILocalVariable *VarInfo,
                                                 DIExpression *Expr,
                                                 const DILocation *DL,
@@ -840,13 +843,12 @@ Instruction *DIBuilder::insertDbgValueIntrinsic(Value *V, uint64_t Offset,
   trackIfUnresolved(VarInfo);
   trackIfUnresolved(Expr);
   Value *Args[] = {getDbgIntrinsicValueImpl(VMContext, V),
-                   ConstantInt::get(Type::getInt64Ty(VMContext), Offset),
                    MetadataAsValue::get(VMContext, VarInfo),
                    MetadataAsValue::get(VMContext, Expr)};
   return withDebugLoc(CallInst::Create(ValueFn, Args, "", InsertBefore), DL);
 }
 
-Instruction *DIBuilder::insertDbgValueIntrinsic(Value *V, uint64_t Offset,
+Instruction *DIBuilder::insertDbgValueIntrinsic(Value *V,
                                                 DILocalVariable *VarInfo,
                                                 DIExpression *Expr,
                                                 const DILocation *DL,
@@ -863,7 +865,6 @@ Instruction *DIBuilder::insertDbgValueIntrinsic(Value *V, uint64_t Offset,
   trackIfUnresolved(VarInfo);
   trackIfUnresolved(Expr);
   Value *Args[] = {getDbgIntrinsicValueImpl(VMContext, V),
-                   ConstantInt::get(Type::getInt64Ty(VMContext), Offset),
                    MetadataAsValue::get(VMContext, VarInfo),
                    MetadataAsValue::get(VMContext, Expr)};
 

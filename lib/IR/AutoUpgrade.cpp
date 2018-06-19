@@ -330,6 +330,13 @@ static bool UpgradeX86IntrinsicFunction(Function *F, StringRef Name,
   return false;
 }
 
+static void copyMetadata(Instruction *Src, Instruction *Dst) {
+  SmallVector<std::pair<unsigned, MDNode *>, 4> MDs;
+  Src->getAllMetadata(MDs);
+  for (const auto &MD : MDs)
+    Dst->setMetadata(MD.first, MD.second);
+}
+
 static bool UpgradeIntrinsicFunction1(Function *F, Function *&NewFn) {
   assert(F && "Illegal to upgrade a non-existent Function.");
 
@@ -416,6 +423,14 @@ static bool UpgradeIntrinsicFunction1(Function *F, Function *&NewFn) {
       rename(F);
       NewFn = Intrinsic::getDeclaration(F->getParent(), Intrinsic::cttz,
                                         F->arg_begin()->getType());
+      return true;
+    }
+    break;
+  }
+  case 'd': {
+    if (Name == "dbg.value" && F->arg_size() == 4) {
+      rename(F);
+      NewFn = Intrinsic::getDeclaration(F->getParent(), Intrinsic::dbg_value);
       return true;
     }
     break;
@@ -2055,6 +2070,20 @@ void llvm::UpgradeIntrinsicCall(CallInst *CI, Function *NewFn) {
     NewCall = Builder.CreateCall(NewFn, {CI->getArgOperand(0)});
     break;
 
+  case Intrinsic::dbg_value:
+    // Upgrade from the old version that had an extra offset argument.
+    assert(CI->getNumArgOperands() == 4);
+    // Drop nonzero offsets instead of attempting to upgrade them.
+    if (auto *Offset = dyn_cast_or_null<Constant>(CI->getArgOperand(1)))
+      if (Offset->isZeroValue()) {
+        NewCall = Builder.CreateCall(
+            NewFn,
+            {CI->getArgOperand(0), CI->getArgOperand(2), CI->getArgOperand(3)});
+        break;
+      }
+    CI->eraseFromParent();
+    return;
+
   case Intrinsic::x86_xop_vfrcz_ss:
   case Intrinsic::x86_xop_vfrcz_sd:
     NewCall = Builder.CreateCall(NewFn, {CI->getArgOperand(1)});
@@ -2127,6 +2156,7 @@ void llvm::UpgradeIntrinsicCall(CallInst *CI, Function *NewFn) {
     SmallVector<Value *, 4> Args(CI->arg_operands().begin(),
                                  CI->arg_operands().end());
     NewCall = Builder.CreateCall(NewFn, Args);
+    copyMetadata(CI, NewCall);
     break;
   }
   }

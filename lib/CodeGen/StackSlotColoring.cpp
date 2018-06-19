@@ -63,7 +63,10 @@ namespace {
     // OrigAlignments - Alignments of stack objects before coloring.
     SmallVector<unsigned, 16> OrigAlignments;
 
-    // OrigSizes - Sizess of stack objects before coloring.
+    // OrigRegions - Regions of stack objects before coloring.
+    SmallVector<StackRegion*, 16> OrigRegions;
+
+    // OrigSizes - Sizes of stack objects before coloring.
     SmallVector<unsigned, 16> OrigSizes;
 
     // AllColors - If index is set, it's a spill slot, i.e. color.
@@ -180,6 +183,7 @@ void StackSlotColoring::ScanForSpillSlotRefs(MachineFunction &MF) {
 void StackSlotColoring::InitializeSlots() {
   int LastFI = MFI->getObjectIndexEnd();
   OrigAlignments.resize(LastFI);
+  OrigRegions.resize(LastFI);
   OrigSizes.resize(LastFI);
   AllColors.resize(LastFI);
   UsedColors.resize(LastFI);
@@ -203,6 +207,7 @@ void StackSlotColoring::InitializeSlots() {
       continue;
     SSIntervals.push_back(&li);
     OrigAlignments[FI] = MFI->getObjectAlignment(FI);
+    OrigRegions[FI]    = MFI->getObjectRegion(FI);
     OrigSizes[FI]      = MFI->getObjectSize(FI);
     AllColors.set(FI);
   }
@@ -234,13 +239,20 @@ int StackSlotColoring::ColorSlot(LiveInterval *li) {
   int Color = -1;
   bool Share = false;
   if (!DisableSharing) {
+    int FI = TargetRegisterInfo::stackSlot2Index(li->reg);
+    StackRegion *Region = OrigRegions[FI];
+
     // Check if it's possible to reuse any of the used colors.
     Color = UsedColors.find_first();
     while (Color != -1) {
-      if (!OverlapWithAssignments(li, Color)) {
-        Share = true;
-        ++NumEliminated;
-        break;
+      // Stack slots for custom regions must only be compared with slots from
+      // the same region.
+      if (MFI->getObjectRegion(Color) == Region) {
+        if (!OverlapWithAssignments(li, Color)) {
+          Share = true;
+          ++NumEliminated;
+          break;
+        }
       }
       Color = UsedColors.find_next(Color);
     }
@@ -260,15 +272,20 @@ int StackSlotColoring::ColorSlot(LiveInterval *li) {
   int FI = TargetRegisterInfo::stackSlot2Index(li->reg);
   DEBUG(dbgs() << "Assigning fi#" << FI << " to fi#" << Color << "\n");
 
-  // Change size and alignment of the allocated slot. If there are multiple
-  // objects sharing the same slot, then make sure the size and alignment
-  // are large enough for all.
+  // Change size, alignment and region of the allocated slot. If there are
+  // multiple objects sharing the same slot, then make sure the size and
+  // alignment are large enough for all.
   unsigned Align = OrigAlignments[FI];
   if (!Share || Align > MFI->getObjectAlignment(Color))
     MFI->setObjectAlignment(Color, Align);
   int64_t Size = OrigSizes[FI];
   if (!Share || Size > MFI->getObjectSize(Color))
     MFI->setObjectSize(Color, Size);
+  StackRegion *Region = OrigRegions[FI];
+  if (!Share)
+    MFI->setObjectRegion(Color, Region);
+  assert(MFI->getObjectRegion(Color) == Region && "Bad stack slot sharing.");
+
   return Color;
 }
 
@@ -463,6 +480,7 @@ bool StackSlotColoring::runOnMachineFunction(MachineFunction &MF) {
     SSRefs[i].clear();
   SSRefs.clear();
   OrigAlignments.clear();
+  OrigRegions.clear();
   OrigSizes.clear();
   AllColors.clear();
   UsedColors.clear();

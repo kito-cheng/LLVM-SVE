@@ -1,6 +1,7 @@
 ; RUN: opt -S -instcombine < %s | FileCheck %s
 
 declare double @llvm.fabs.f64(double) nounwind readnone
+declare double @llvm.sqrt.f64(double) nounwind readnone
 
 define i1 @test1(float %x, float %y) nounwind {
 ; CHECK-LABEL: @test1(
@@ -334,3 +335,53 @@ define i1 @test19_undef_ordered() nounwind {
   ret i1 %cmp
 }
 
+define i1 @test21(double %a) nounwind {
+; CHECK-LABEL: @test21(
+; CHECK-NEXT:    ret i1 false
+;
+  %call = call double @llvm.fabs.f64(double %a)
+  %cmp = fcmp olt double %call, -1.000000e+00
+  ret i1 %cmp
+}
+
+define i1 @test22(double %a) nounwind {
+; CHECK-LABEL: @test22(
+; CHECK-NEXT:    ret i1 true
+;
+  %call = call double @llvm.fabs.f64(double %a)
+  %cmp = fcmp uge double %call, -1.000000e+00
+  ret i1 %cmp
+}
+
+; fcmp sqrt(X),C --> fcmp X,C*C
+define i1 @fcmp_fsqrt_test1(double %v) {
+; CHECK-LABEL: @fcmp_fsqrt_test1(
+; CHECK-NOT: llvm.sqrt.f64
+; CHECK-NEXT: %cmp = fcmp ogt double %v, 4.000000e+00
+; CHECK-NEXT: ret i1 %cmp
+  %sqrt = call double @llvm.sqrt.f64(double %v)
+  %cmp = fcmp nnan ogt double %sqrt, 2.000000e+00
+  ret i1 %cmp
+}
+
+; ensure we preserve sqrts when compared against negative numbers.
+define i1 @fcmp_fsqrt_test2(double %v) {
+; CHECK-LABEL: @fcmp_fsqrt_test2(
+; CHECK-NEXT: %sqrt = call double @llvm.sqrt.f64(double %v)
+; CHECK-NEXT: %cmp = fcmp nnan ogt double %sqrt, -2.000000e+00
+; CHECK-NEXT: ret i1 %cmp
+  %sqrt = call double @llvm.sqrt.f64(double %v)
+  %cmp = fcmp nnan ogt double %sqrt, -2.000000e+00
+  ret i1 %cmp
+}
+
+; ensure we maintain sqrts when preserving NaNs.
+define i1 @fcmp_fsqrt_test3(double %v) {
+; CHECK-LABEL: @fcmp_fsqrt_test3(
+; CHECK-NEXT: %sqrt = call double @llvm.sqrt.f64(double %v)
+; CHECK-NEXT: %cmp = fcmp ogt double %sqrt, 2.000000e+00
+; CHECK-NEXT: ret i1 %cmp
+  %sqrt = call double @llvm.sqrt.f64(double %v)
+  %cmp = fcmp ogt double %sqrt, 2.000000e+00
+  ret i1 %cmp
+}

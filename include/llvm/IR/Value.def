@@ -79,7 +79,9 @@ HANDLE_CONSTANT(ConstantStruct)
 HANDLE_CONSTANT(ConstantVector)
 
 // ConstantData.
+HANDLE_CONSTANT(StepVector)
 HANDLE_CONSTANT(UndefValue)
+HANDLE_CONSTANT(VScale)
 HANDLE_CONSTANT(ConstantAggregateZero)
 HANDLE_CONSTANT(ConstantDataArray)
 HANDLE_CONSTANT(ConstantDataVector)

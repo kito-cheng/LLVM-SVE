@@ -114,6 +114,11 @@ EnableA53Fix835769("aarch64-fix-cortex-a53-835769", cl::Hidden,
                 cl::desc("Work around Cortex-A53 erratum 835769"),
                 cl::init(false));
 
+static cl::opt<bool> LowerGatherScatterToInterleaved(
+    "sve-lower-gather-scatter-to-interleaved",
+    cl::desc("Enable lowering gather/scatters to interleaved intrinsics"),
+    cl::init(true), cl::Hidden);
+
 static cl::opt<bool>
     EnableGEPOpt("aarch64-enable-gep-opt", cl::Hidden,
                  cl::desc("Enable optimizations on complex GEPs"),
@@ -129,6 +134,17 @@ static cl::opt<cl::boolOrDefault>
                       cl::desc("Enable the global merge pass"));
 
 static cl::opt<bool>
+    EnableSVEPostVec("aarch64-sve-postvec", cl::init(true), cl::Hidden,
+                     cl::desc("Enable the SVE post vectorization pass."));
+
+// Enable the clean up of unnecessary setffr instruction planted when lowering
+// the load first-fault instructions
+static cl::opt<bool>
+    EnableAArch64SetFFROptimize("aarch64-setffr-optimize", cl::Hidden,
+                                cl::desc("Remove unnecessary 'setffr'."),
+                                cl::init(false));
+
+static cl::opt<bool>
     EnableLoopDataPrefetch("aarch64-enable-loop-data-prefetch", cl::Hidden,
                            cl::desc("Enable the loop data prefetch pass"),
                            cl::init(true));
@@ -137,6 +153,11 @@ static cl::opt<int> EnableGlobalISelAtO(
     "aarch64-enable-global-isel-at-O", cl::Hidden,
     cl::desc("Enable GlobalISel at or below an opt level (-1 to disable)"),
     cl::init(-1));
+
+static cl::opt<bool>
+EnableSVEIntrinsicOpts("aarch64-sve-intrinsic-opts", cl::Hidden,
+                       cl::desc("Enable SVE intrinsic opts"),
+                       cl::init(true));
 
 static cl::opt<bool> EnableFalkorHWPFFix("aarch64-enable-falkor-hwpf-fix",
                                          cl::init(true), cl::Hidden);
@@ -164,6 +185,7 @@ extern "C" void LLVMInitializeAArch64Target() {
   initializeFalkorHWPFFixPass(*PR);
   initializeFalkorMarkStridedAccessesLegacyPass(*PR);
   initializeLDTLSCleanupPass(*PR);
+  initializeSVEIntrinsicOptsPass(*PR);
 }
 
 //===----------------------------------------------------------------------===//
@@ -306,6 +328,7 @@ public:
   }
 
   void addIRPasses()  override;
+  bool addPostCoalesce() override;
   bool addPreISel() override;
   bool addInstSelector() override;
 #ifdef LLVM_BUILD_GLOBAL_ISEL
@@ -341,6 +364,19 @@ void AArch64PassConfig::addIRPasses() {
   // ourselves.
   addPass(createAtomicExpandPass());
 
+  // Make use of SVE intrinsics in place of common vector operations that span
+  // multiple basic blocks.
+  if (TM->getOptLevel() != CodeGenOpt::None && EnableSVEPostVec)
+    addPass(createSVEPostVectorizePass());
+
+  // Expand any SVE vector library calls that we can't code generate directly.
+  bool ExpandToOptimize = (TM->getOptLevel() != CodeGenOpt::None);
+  if (EnableSVEIntrinsicOpts && TM->getOptLevel() == CodeGenOpt::Aggressive) {
+    addPass(createSVEIntrinsicOptsPass());
+    addPass(createInstructionCombiningPass());
+  }
+  addPass(createSVEExpandLibCallPass(ExpandToOptimize));
+
   // Cmpxchg instructions are often used with a subsequent comparison to
   // determine whether it succeeded. We can exploit existing control-flow in
   // ldrex/strex loops to simplify this, but it needs tidying up.
@@ -364,6 +400,19 @@ void AArch64PassConfig::addIRPasses() {
   if (TM->getOptLevel() != CodeGenOpt::None)
     addPass(createInterleavedAccessPass());
 
+  // Match interleaved gathers and scatters to ldN/stN intrinsics
+  if (TM->getOptLevel() == CodeGenOpt::Aggressive &&
+      LowerGatherScatterToInterleaved) {
+    // Call EarlyCSE pass to ensure seriesvectors that looks the same are the
+    // same
+    addPass(createEarlyCSEPass());
+
+    addPass(createInterleavedGatherScatterPass(TM));
+
+    // Simplify the address calculation of any new interleaved accesses
+    addPass(createInstructionCombiningPass());
+  }
+
   if (TM->getOptLevel() == CodeGenOpt::Aggressive && EnableGEPOpt) {
     // Call SeparateConstOffsetFromGEP pass to extract constants within indices
     // and lower a GEP with multiple indices to either arithmetic operations or
@@ -379,6 +428,15 @@ void AArch64PassConfig::addIRPasses() {
 }
 
 // Pass Pipeline Configuration
+
+bool AArch64PassConfig::addPostCoalesce() {
+  // Add a pass that transforms SVE MOVPRFXable Pseudo instructions
+  // to add an 'earlyclobber' under certain conditions
+  addPass(createSVEConditionalEarlyClobberPass());
+
+  return false;
+}
+
 bool AArch64PassConfig::addPreISel() {
   // Run promote constant before global merge, so that the promoted constants
   // get a chance to be merged
@@ -393,6 +451,11 @@ bool AArch64PassConfig::addPreISel() {
     bool OnlyOptimizeForSize = (TM->getOptLevel() < CodeGenOpt::Aggressive) &&
                                (EnableGlobalMerge == cl::BOU_UNSET);
     addPass(createGlobalMergePass(TM, 4095, OnlyOptimizeForSize));
+  }
+
+  if (TM->getOptLevel() != CodeGenOpt::None && EnableSVEPostVec) {
+    addPass(createSVEAddressingModesPass());
+    addPass(createDeadCodeEliminationPass());
   }
 
   return false;
@@ -506,4 +569,7 @@ void AArch64PassConfig::addPreEmitPass() {
   if (TM->getOptLevel() != CodeGenOpt::None && EnableCollectLOH &&
       TM->getTargetTriple().isOSBinFormatMachO())
     addPass(createAArch64CollectLOHPass());
+
+  // SVE bundles move prefixes with destructive operations.
+  addPass(createUnpackMachineBundles(nullptr));
 }

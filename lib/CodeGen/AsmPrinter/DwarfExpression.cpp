@@ -334,6 +334,12 @@ void DwarfExpression::addExpression(DIExpressionCursor &&ExprCursor,
       emitOp(dwarf::DW_OP_plus_uconst);
       emitUnsigned(Op->getArg(0));
       break;
+    case dwarf::DW_OP_deref_size:
+      assert(LocationKind != Register);
+      emitOp(dwarf::DW_OP_deref_size);
+      emitUnsigned(Op->getArg(0));
+      break;
+    case dwarf::DW_OP_mul:
     case dwarf::DW_OP_plus:
     case dwarf::DW_OP_minus:
       emitOp(Op->getOp());
@@ -353,6 +359,18 @@ void DwarfExpression::addExpression(DIExpressionCursor &&ExprCursor,
       emitOp(dwarf::DW_OP_constu);
       emitUnsigned(Op->getArg(0));
       break;
+    case dwarf::DW_OP_bregx: {
+      unsigned DwarfReg = Op->getArg(0);
+      int Offset = Op->getArg(1);
+      if (DwarfReg <= 31)
+        emitOp(dwarf::DW_OP_breg0 + DwarfReg);
+      else {
+        emitOp(dwarf::DW_OP_bregx);
+        emitUnsigned(DwarfReg);
+      }
+      emitSigned(Offset);
+      break;
+    }
     case dwarf::DW_OP_stack_value:
       LocationKind = Implicit;
       break;

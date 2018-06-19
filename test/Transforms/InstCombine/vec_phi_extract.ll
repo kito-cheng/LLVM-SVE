@@ -2,8 +2,8 @@
 
 define void @f(i64 %val, i32  %limit, i32 *%ptr) {
 ; CHECK-LABEL: @f
-; CHECK: %0 = trunc i64 %val to i32
-; CHECK: %1 = phi i32 [ %0, %entry ], [ {{.*}}, %loop ]
+; CHECK: %[[TRVAL:.*]] = trunc i64 %val to i32
+; CHECK: %{{[0-9]+}} = phi i32 [ %[[TRVAL]], %entry ], [ {{.*}}, %loop ]
 entry:
   %tempvector = insertelement <16 x i64> undef, i64 %val, i32 0
   %vector = shufflevector <16 x i64> %tempvector, <16 x i64> undef, <16 x i32> zeroinitializer
@@ -28,8 +28,8 @@ ret:
 
 define void @copy(i64 %val, i32  %limit, i32 *%ptr) {
 ; CHECK-LABEL: @copy
-; CHECK: %0 = trunc i64 %val to i32
-; CHECK: %1 = phi i32 [ %0, %entry ], [ {{.*}}, %loop ]
+; CHECK: %[[TRVAL:.*]] = trunc i64 %val to i32
+; CHECK: %{{[0-9]+}} = phi i32 [ %[[TRVAL]], %entry ], [ {{.*}}, %loop ]
 entry:
   %tempvector = insertelement <16 x i64> undef, i64 %val, i32 0
   %vector = shufflevector <16 x i64> %tempvector, <16 x i64> undef, <16 x i32> zeroinitializer
@@ -56,7 +56,7 @@ ret:
 define void @nocopy(i64 %val, i32  %limit, i32 *%ptr) {
 ; CHECK-LABEL: @nocopy
 ; CHECK-NOT: phi i32
-; CHECK: phi <16 x i32> [ %1, %entry ], [ %inc, %loop ]
+; CHECK: phi <16 x i32> [ %{{[0-9]+}}, %entry ], [ %inc, %loop ]
 entry:
   %tempvector = insertelement <16 x i64> undef, i64 %val, i32 0
   %vector = shufflevector <16 x i64> %tempvector, <16 x i64> undef, <16 x i32> zeroinitializer

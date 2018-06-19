@@ -1,5 +1,7 @@
 // RUN: not llvm-mc -triple arm64 -show-encoding < %s 2>%t | FileCheck %s
 // RUN: FileCheck --check-prefix=CHECK-ERRORS < %t %s
+// RUN: not llvm-mc -triple arm64 -mattr=+sve -show-encoding < %s 2>%t | FileCheck %s
+// RUN: FileCheck --check-prefix=CHECK-ERRORS < %t %s
 
 msr SPSel, #0
 msr SPSel, x0

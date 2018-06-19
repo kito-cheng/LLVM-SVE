@@ -46,6 +46,7 @@ static Constant *BitCastConstantVector(Constant *CV, VectorType *DstTy) {
 
   if (CV->isAllOnesValue()) return Constant::getAllOnesValue(DstTy);
   if (CV->isNullValue()) return Constant::getNullValue(DstTy);
+  if (DstTy->isScalable()) return nullptr;
 
   // If this cast changes element count then we can't handle it here:
   // doing so requires endianness information.  This should be handled by
@@ -694,8 +695,45 @@ Constant *llvm::ConstantFoldCastInstruction(unsigned opc, Constant *V,
     }
     return nullptr;
   case Instruction::Trunc: {
-    if (V->getType()->isVectorTy())
+    if (V->getType()->isVectorTy()) {
+      if (auto *CE = dyn_cast<ConstantExpr>(V)) {
+        if (CE->getOpcode() == Instruction::ShuffleVector) {
+          auto TruncElTy = cast<VectorType>(DestTy)->getScalarType();
+          auto OpTy = cast<VectorType>(CE->getOperand(0)->getType());
+          auto NewOpTy = VectorType::get(TruncElTy, OpTy->getElementCount());
+
+          Constant *A = ConstantExpr::getTrunc(CE->getOperand(0), NewOpTy);
+          Constant *B = ConstantExpr::getTrunc(CE->getOperand(1), NewOpTy);
+          return ConstantExpr::getShuffleVector(A, B, CE->getOperand(2));
+        }
+        if (CE->getOpcode() == Instruction::InsertElement) {
+          auto TruncElTy = cast<VectorType>(DestTy)->getScalarType();
+
+          Constant *A = ConstantExpr::getTrunc(CE->getOperand(0), DestTy);
+          Constant *B = ConstantExpr::getTrunc(CE->getOperand(1), TruncElTy);
+          return ConstantExpr::getInsertElement(A, B, CE->getOperand(2));
+        }
+        if (CE->getOpcode() == Instruction::Add) {
+          Constant *A = ConstantExpr::getTrunc(CE->getOperand(0), DestTy);
+          Constant *B = ConstantExpr::getTrunc(CE->getOperand(1), DestTy);
+          return ConstantExpr::getAdd(A, B);
+        }
+        if (CE->getOpcode() == Instruction::Sub) {
+          Constant *A = ConstantExpr::getTrunc(CE->getOperand(0), DestTy);
+          Constant *B = ConstantExpr::getTrunc(CE->getOperand(1), DestTy);
+          return ConstantExpr::getSub(A, B);
+        }
+        if (CE->getOpcode() == Instruction::Mul) {
+          Constant *A = ConstantExpr::getTrunc(CE->getOperand(0), DestTy);
+          Constant *B = ConstantExpr::getTrunc(CE->getOperand(1), DestTy);
+          return ConstantExpr::getMul(A, B);
+        }
+      } else if (isa<StepVector>(V)) {
+        return StepVector::get(DestTy);
+      }
+
       return nullptr;
+    }
 
     uint32_t DestBitWidth = cast<IntegerType>(DestTy)->getBitWidth();
     if (ConstantInt *CI = dyn_cast<ConstantInt>(V)) {
@@ -710,6 +748,13 @@ Constant *llvm::ConstantFoldCastInstruction(unsigned opc, Constant *V,
         (cast<IntegerType>(V->getType())->getBitWidth() & 7) == 0)
       if (Constant *Res = ExtractConstantBytes(V, 0, DestBitWidth / 8))
         return Res;
+
+    ConstantInt *Cst = nullptr;
+    // Transform "i32 trunc (i64 mul (vscale, cst))" -> "i32 mul(vscale, cst)"
+    if (match(V, m_Mul(m_VScale(), m_ConstantInt(Cst)))) {
+      return ConstantExpr::getMul(
+          VScale::get(DestTy), ConstantInt::get(DestTy, Cst->getZExtValue()));
+    }
 
     return nullptr;
   }
@@ -787,8 +832,9 @@ Constant *llvm::ConstantFoldExtractElementInstruction(Constant *Val,
 
   if (ConstantInt *CIdx = dyn_cast<ConstantInt>(Idx)) {
     // ee({w,x,y,z}, wrong_value) -> undef
-    if (CIdx->uge(Val->getType()->getVectorNumElements()))
-      return UndefValue::get(Val->getType()->getVectorElementType());
+    if (!Val->getType()->getVectorIsScalable())
+      if (CIdx->uge(Val->getType()->getVectorNumElements()))
+        return UndefValue::get(Val->getType()->getVectorElementType());
     return Val->getAggregateElement(CIdx->getZExtValue());
   }
   return nullptr;
@@ -799,6 +845,13 @@ Constant *llvm::ConstantFoldInsertElementInstruction(Constant *Val,
                                                      Constant *Idx) {
   if (isa<UndefValue>(Idx))
     return UndefValue::get(Val->getType());
+
+  if (Val->isNullValue() && Elt->isNullValue())
+    return Val;
+
+  // Everything after this point assumes you can iterate across Val.
+  if (Val->getType()->getVectorIsScalable())
+    return nullptr;
 
   ConstantInt *CIdx = dyn_cast<ConstantInt>(Idx);
   if (!CIdx) return nullptr;
@@ -827,22 +880,41 @@ Constant *llvm::ConstantFoldInsertElementInstruction(Constant *Val,
 Constant *llvm::ConstantFoldShuffleVectorInstruction(Constant *V1,
                                                      Constant *V2,
                                                      Constant *Mask) {
-  unsigned MaskNumElts = Mask->getType()->getVectorNumElements();
+  auto *MaskTy = cast<VectorType>(Mask->getType());
+  auto MaskNumElts = MaskTy->getElementCount();
   Type *EltTy = V1->getType()->getVectorElementType();
+  Type *ResultTy = VectorType::get(EltTy, MaskNumElts);
 
   // Undefined shuffle mask -> undefined value.
   if (isa<UndefValue>(Mask))
-    return UndefValue::get(VectorType::get(EltTy, MaskNumElts));
+    return UndefValue::get(ResultTy);
 
   // Don't break the bitcode reader hack.
   if (isa<ConstantExpr>(Mask)) return nullptr;
 
+  if (cast<VectorType>(Mask->getType())->isScalable()) {
+    // Is splat?
+    if (Mask->isNullValue()) {
+      Constant *Zero = Constant::getNullValue(MaskTy->getElementType());
+      Constant* SplatVal = ConstantFoldExtractElementInstruction(V1, Zero);
+      // Is splat of zero or undef?
+      if (SplatVal){
+        if( SplatVal->isNullValue())
+          return Constant::getNullValue(ResultTy);
+        if( isa<UndefValue>(SplatVal))
+          return UndefValue::get(ResultTy);
+      }
+    }
+    return nullptr;
+  }
   unsigned SrcNumElts = V1->getType()->getVectorNumElements();
 
   // Loop over the shuffle mask, evaluating each element.
   SmallVector<Constant*, 32> Result;
-  for (unsigned i = 0; i != MaskNumElts; ++i) {
-    int Elt = ShuffleVectorInst::getMaskValue(Mask, i);
+  for (unsigned i = 0; i != MaskNumElts.Min; ++i) {
+    int Elt;
+    if (!ShuffleVectorInst::getMaskValue(Mask, i, Elt))
+      return nullptr;
     if (Elt == -1) {
       Result.push_back(UndefValue::get(EltTy));
       continue;
@@ -1201,6 +1273,76 @@ Constant *llvm::ConstantFoldBinaryInstruction(unsigned Opcode,
       }
     }
   } else if (VectorType *VTy = dyn_cast<VectorType>(C1->getType())) {
+    // Constant fold binary op with constant splats,
+    // e.g.:
+    //       <binop> (<vty> splat(<ty> <C1>)),
+    //               (<vty> splat(<ty> <C2>))
+    //  ==>  <vty> splat (<ty> <binop> (C1, C2))
+    if (isa<VectorType>(C2->getType())) {
+      Constant *Splat1 = nullptr, *Splat2 = nullptr;
+      if (match(C1, m_SplatVector(m_Constant(Splat1))) &&
+          match(C2, m_SplatVector(m_Constant(Splat2)))) {
+        auto EC = cast<VectorType>(C1->getType())->getElementCount();
+        Constant *Rtrn = ConstantExpr::get(Opcode, Splat1, Splat2);
+        return ConstantVector::getSplat(EC, Rtrn);
+      }
+    }
+
+    // A set of simple folds applicable to all vector types.
+    switch (Opcode) {
+    default:
+      break;
+
+    case Instruction::Add:
+      // X + 0 == X
+      if (C1->isNullValue())
+        return C2;
+      if (C2->isNullValue())
+        return C1;
+
+      // PtrToInt(Splat(X)) + Splat(Y) ==> PtrToInt(Splat(GetElementPtr(X, Y)))
+      if (isa<ConstantExpr>(C1) &&
+          cast<ConstantExpr>(C1)->getOpcode() == Instruction::PtrToInt) {
+        Constant *X = cast<Constant>(C1->getOperand(0))->getSplatValue();
+        Constant *Y = C2->getSplatValue();
+
+        if (X && Y) {
+          auto AS = X->getType()->getPointerAddressSpace();
+          auto BaseTy = Type::getInt8Ty(C1->getContext())->getPointerTo(AS);
+
+          // Convert to byte* so Y doesn't get scaled.
+          Constant *Base = ConstantExpr::getPointerCast(X, BaseTy);
+          Constant *GEP = ConstantExpr::getGetElementPtr(nullptr, Base, Y);
+
+          auto EC = cast<VectorType>(C1->getType())->getElementCount();
+          Constant *Splat = ConstantVector::getSplat(EC, GEP);
+
+          return ConstantExpr::getPtrToInt(Splat, C1->getType());
+        }
+      }
+      break;
+
+    case Instruction::Sub:
+    case Instruction::Or:
+    case Instruction::Xor:
+      // X op 0 == X
+      if (C2->isNullValue())
+        return C1;
+      break;
+
+    case Instruction::Mul:
+      // X * 1 == X
+      if (match(C1, m_SplatVector(m_One())))
+        return C2;
+      if (match(C2, m_SplatVector(m_One())))
+        return C1;
+      break;
+    }
+
+    // Everything after this point assumes you can iterate across C1 & C2.
+    if (VTy->isScalable())
+      return nullptr;
+
     // Perform elementwise folding.
     SmallVector<Constant*, 16> Result;
     Type *Ty = IntegerType::get(VTy->getContext(), 32);
@@ -1679,7 +1821,7 @@ Constant *llvm::ConstantFoldCompareInstruction(unsigned short pred,
   Type *ResultTy;
   if (VectorType *VT = dyn_cast<VectorType>(C1->getType()))
     ResultTy = VectorType::get(Type::getInt1Ty(C1->getContext()),
-                               VT->getNumElements());
+                               VT->getElementCount());
   else
     ResultTy = Type::getInt1Ty(C1->getContext());
 
@@ -1806,6 +1948,9 @@ Constant *llvm::ConstantFoldCompareInstruction(unsigned short pred,
                                         R==APFloat::cmpEqual);
     }
   } else if (C1->getType()->isVectorTy()) {
+    if (cast<VectorType>(C1->getType())->isScalable())
+      return nullptr;
+
     // If we can constant fold the comparison of each element, constant fold
     // the whole vector comparison.
     SmallVector<Constant*, 4> ResElts;
@@ -2064,7 +2209,7 @@ Constant *llvm::ConstantFoldGetElementPtr(Type *PointeeTy, Constant *C,
       assert(Ty && "Invalid indices for GEP!");
       Type *GEPTy = PointerType::get(Ty, PtrTy->getAddressSpace());
       if (VectorType *VT = dyn_cast<VectorType>(C->getType()))
-        GEPTy = VectorType::get(GEPTy, VT->getNumElements());
+        GEPTy = VectorType::get(GEPTy, VT->getElementCount());
       return Constant::getNullValue(GEPTy);
     }
   }

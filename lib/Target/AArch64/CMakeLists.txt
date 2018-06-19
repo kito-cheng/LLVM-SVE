@@ -68,7 +68,12 @@ add_llvm_target(AArch64CodeGen
   AArch64TargetMachine.cpp
   AArch64TargetObjectFile.cpp
   AArch64TargetTransformInfo.cpp
+  SVEAddressingModes.cpp
+  SVEPostVectorize.cpp
+  SVEExpandLibCall.cpp
+  SVEConditionalEarlyClobberPass.cpp
   AArch64VectorByElementOpt.cpp
+  SVEIntrinsicOpts.cpp
   ${GLOBAL_ISEL_BUILD_FILES}
 
   DEPENDS

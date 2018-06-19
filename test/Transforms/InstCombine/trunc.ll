@@ -533,3 +533,28 @@ define <8 x i8> @wide_lengthening_splat(<4 x i16> %v) {
   ret <8 x i8> %tr
 }
 
+define <n x 4 x i16> @test11(<n x 4 x i32> %v) {
+  %Y = add <n x 4 x i32> %v, shufflevector (<n x 4 x i32> insertelement (<n x 4 x i32> undef, i32 1, i32 0),
+                                            <n x 4 x i32> undef,
+                                            <n x 4 x i32> zeroinitializer)
+  %Z = trunc <n x 4 x i32> %Y to <n x 4 x i16>
+  ret <n x 4 x i16> %Z
+
+; CHECK-LABEL: @test11(
+; CHECK-NEXT: trunc <n x 4 x i32> %v to <n x 4 x i16>
+; CHECK-NEXT: add <n x 4 x i16>
+; CHECK-NEXT: ret
+}
+
+define <n x 4 x i16> @test12(<n x 4 x i32> %v) {
+  %Y = and <n x 4 x i32> %v, shufflevector (<n x 4 x i32> insertelement (<n x 4 x i32> undef, i32 1, i32 0),
+                                            <n x 4 x i32> undef,
+                                            <n x 4 x i32> zeroinitializer)
+  %Z = trunc <n x 4 x i32> %Y to <n x 4 x i16>
+  ret <n x 4 x i16> %Z
+
+; CHECK-LABEL: @test12(
+; CHECK-NEXT: trunc <n x 4 x i32> %v to <n x 4 x i16>
+; CHECK-NEXT: and <n x 4 x i16>
+; CHECK-NEXT: ret
+}

@@ -210,6 +210,7 @@ void AsmPrinter::emitCFIInstruction(const MCCFIInstruction &Inst) const {
     OutStreamer->EmitCFIGnuArgsSize(Inst.getOffset());
     break;
   case MCCFIInstruction::OpEscape:
+    OutStreamer->AddComment(Inst.getComment());
     OutStreamer->EmitCFIEscape(Inst.getValues());
     break;
   }

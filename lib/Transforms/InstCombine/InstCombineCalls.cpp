@@ -21,6 +21,7 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/InstructionSimplify.h"
+#include "llvm/Analysis/Loads.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/BasicBlock.h"
@@ -413,7 +414,7 @@ static Value *simplifyX86immShift(const IntrinsicInst &II,
 
   // Get a constant vector of the same type as the first operand.
   auto ShiftAmt = ConstantInt::get(SVT, Count.zextOrTrunc(BitWidth));
-  auto ShiftVec = Builder.CreateVectorSplat(VWidth, ShiftAmt);
+  auto ShiftVec = Builder.CreateVectorSplat({VWidth, false}, ShiftAmt);
 
   if (ShiftLeft)
     return Builder.CreateShl(Vec, ShiftVec);
@@ -1311,7 +1312,10 @@ static bool maskIsAllOneOrUndef(Value *Mask) {
     return false;
   if (ConstMask->isAllOnesValue() || isa<UndefValue>(ConstMask))
     return true;
-  for (unsigned I = 0, E = ConstMask->getType()->getVectorNumElements(); I != E;
+  auto *VTy = dyn_cast<VectorType>(Mask->getType());
+  if (!VTy || VTy->isScalable())
+    return false;
+  for (unsigned I = 0, E =  ConstMask->getType()->getVectorNumElements(); I != E;
        ++I) {
     if (auto *MaskElt = ConstMask->getAggregateElement(I))
       if (MaskElt->isAllOnesValue() || isa<UndefValue>(MaskElt))
@@ -1340,16 +1344,15 @@ static Instruction *simplifyMaskedStore(IntrinsicInst &II, InstCombiner &IC) {
     return nullptr;
 
   // If the mask is all zeros, this instruction does nothing.
-  if (ConstMask->isNullValue())
+  if (ConstMask->isNullValue() || isa<UndefValue>(ConstMask))
     return IC.eraseInstFromFunction(II);
 
   // If the mask is all ones, this is a plain vector store of the 1st argument.
-  if (ConstMask->isAllOnesValue()) {
+  if (ConstMask->isAllOnesValue()){
     Value *StorePtr = II.getArgOperand(1);
     unsigned Alignment = cast<ConstantInt>(II.getArgOperand(2))->getZExtValue();
     return new StoreInst(II.getArgOperand(0), StorePtr, false, Alignment);
   }
-
   return nullptr;
 }
 
@@ -1990,11 +1993,21 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
     break;
   }
 
-  case Intrinsic::masked_load:
+  case Intrinsic::masked_load: {
     if (Value *SimplifiedMaskedOp = simplifyMaskedLoad(*II, Builder))
       return replaceInstUsesWith(CI, SimplifiedMaskedOp);
+    BasicBlock::iterator BBI(II);
+    bool IsLoadCSE = false;
+    if (Value *AvailableVal = FindAvailablePtrMaskedLoadStore(
+            II->getOperand(0), II->getOperand(2), II->getOperand(3),
+            II->getType(), II->isAtomic(), II->getParent(), BBI,
+            DefMaxInstsToScan, AA, &IsLoadCSE, 0))
+      return replaceInstUsesWith(CI, AvailableVal);
     break;
+  }
   case Intrinsic::masked_store:
+    if (clearRedundantStore(cast<Instruction>(II)))
+      return nullptr;
     return simplifyMaskedStore(*II, *this);
   case Intrinsic::masked_gather:
     return simplifyMaskedGather(*II, *this);
@@ -3959,9 +3972,13 @@ Instruction *InstCombiner::visitCallSite(CallSite CS) {
     // This instruction is not reachable, just remove it.  We insert a store to
     // undef so that we know that this code is not reachable, despite the fact
     // that we can't modify the CFG here.
-    new StoreInst(ConstantInt::getTrue(Callee->getContext()),
-                  UndefValue::get(Type::getInt1PtrTy(Callee->getContext())),
-                  CS.getInstruction());
+    auto *SI =
+      new StoreInst(ConstantInt::getTrue(Callee->getContext()),
+                    UndefValue::get(Type::getInt1PtrTy(Callee->getContext())),
+                    CS.getInstruction());
+    DEBUG(dbgs() << "IC: UNREACHABLE INSTRUCTION\n");
+    DEBUG(dbgs() << "    Replacing " << *CS.getInstruction() << '\n'
+                 << "    with " << *SI << '\n');
 
     return eraseInstFromFunction(*CS.getInstruction());
   }

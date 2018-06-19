@@ -54,6 +54,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/Statepoint.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/CommandLine.h"
@@ -70,6 +71,7 @@
 #include <algorithm>
 #include <utility>
 using namespace llvm;
+using namespace llvm::PatternMatch;
 
 #define DEBUG_TYPE "isel"
 
@@ -333,11 +335,11 @@ static SDValue getCopyFromPartsVector(SelectionDAG &DAG, const SDLoc &DL,
 
     // Build a vector with BUILD_VECTOR or CONCAT_VECTORS from the
     // intermediate operands.
-    EVT BuiltVectorTy =
-        EVT::getVectorVT(*DAG.getContext(), IntermediateVT.getScalarType(),
-                         (IntermediateVT.isVector()
-                              ? IntermediateVT.getVectorNumElements() * NumParts
-                              : NumIntermediates));
+    EVT BuiltVectorTy = IntermediateVT.isVector()
+        ? EVT::getVectorVT(*DAG.getContext(), IntermediateVT.getScalarType(),
+                           IntermediateVT.getVectorElementCount() * NumParts)
+        : EVT::getVectorVT(*DAG.getContext(), IntermediateVT.getScalarType(),
+                           NumIntermediates);
     Val = DAG.getNode(IntermediateVT.isVector() ? ISD::CONCAT_VECTORS
                                                 : ISD::BUILD_VECTOR,
                       DL, BuiltVectorTy, Ops);
@@ -641,7 +643,7 @@ static void getCopyToPartsVector(SelectionDAG &DAG, const SDLoc &DL,
       NumIntermediates *
       (IntermediateVT.isVector() ? IntermediateVT.getVectorNumElements() : 1);
   EVT BuiltVectorTy = EVT::getVectorVT(
-      *DAG.getContext(), IntermediateVT.getScalarType(), DestVectorNoElts);
+      *DAG.getContext(), IntermediateVT.getScalarType(), DestVectorNoElts, ValueVT.isScalableVector());
   if (Val.getValueType() != BuiltVectorTy)
     Val = DAG.getNode(ISD::BITCAST, DL, BuiltVectorTy, Val);
 
@@ -1025,12 +1027,10 @@ void SelectionDAGBuilder::resolveDanglingDebugInfo(const Value *V,
     DIExpression *Expr = DI->getExpression();
     assert(Variable->isValidLocationForIntrinsic(dl) &&
            "Expected inlined-at fields to agree");
-    uint64_t Offset = DI->getOffset();
     SDDbgValue *SDV;
     if (Val.getNode()) {
-      if (!EmitFuncArgumentDbgValue(V, Variable, Expr, dl, Offset, false,
-                                    Val)) {
-        SDV = getDbgValue(Val, Variable, Expr, Offset, dl, DbgSDNodeOrder);
+      if (!EmitFuncArgumentDbgValue(V, Variable, Expr, dl, false, Val)) {
+        SDV = getDbgValue(Val, Variable, Expr, dl, DbgSDNodeOrder);
         DAG.AddDbgValue(SDV, Val.getNode(), false);
       }
     } else
@@ -1131,8 +1131,18 @@ SDValue SelectionDAGBuilder::getValueImpl(const Value *V) {
     if (const ConstantFP *CFP = dyn_cast<ConstantFP>(C))
       return DAG.getConstantFP(*CFP, getCurSDLoc(), VT);
 
+    if (isa<StepVector>(C)) {
+      EVT EltVT = VT.getVectorElementType();
+      SDValue One = DAG.getConstant(1, getCurSDLoc(), EltVT);
+      SDValue Zero = DAG.getConstant(0, getCurSDLoc(), EltVT);
+      return DAG.getNode(ISD::SERIES_VECTOR, getCurSDLoc(), VT, Zero, One);
+    }
+
     if (isa<UndefValue>(C) && !V->getType()->isAggregateType())
       return DAG.getUNDEF(VT);
+
+    if (isa<VScale>(C))
+      return DAG.getVScale(getCurSDLoc(), VT);
 
     if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
       visit(CE->getOpcode(), *CE);
@@ -1213,12 +1223,15 @@ SDValue SelectionDAGBuilder::getValueImpl(const Value *V) {
       EVT EltVT =
           TLI.getValueType(DAG.getDataLayout(), VecTy->getElementType());
 
-      SDValue Op;
+      SDValue SplatVal;
       if (EltVT.isFloatingPoint())
-        Op = DAG.getConstantFP(0, getCurSDLoc(), EltVT);
+        SplatVal = DAG.getConstantFP(0, getCurSDLoc(), EltVT);
       else
-        Op = DAG.getConstant(0, getCurSDLoc(), EltVT);
-      Ops.assign(NumElements, Op);
+        SplatVal = DAG.getConstant(0, getCurSDLoc(), EltVT);
+      if (VT.isScalableVector())
+        return DAG.getNode(ISD::SPLAT_VECTOR, getCurSDLoc(), VT, SplatVal);
+
+      Ops.assign(NumElements, SplatVal);
     }
 
     // Create a BUILD_VECTOR node.
@@ -1417,7 +1430,7 @@ void SelectionDAGBuilder::visitRet(const ReturnInst &I) {
     SDValue RetOp = getValue(I.getOperand(0));
 
     SmallVector<EVT, 4> ValueVTs;
-    SmallVector<uint64_t, 4> Offsets;
+    SmallVector<FieldOffsets, 4> Offsets;
     ComputeValueVTs(TLI, DL, I.getOperand(0)->getType(), ValueVTs, &Offsets);
     unsigned NumValues = ValueVTs.size();
 
@@ -1426,11 +1439,15 @@ void SelectionDAGBuilder::visitRet(const ReturnInst &I) {
     SDNodeFlags Flags;
     Flags.setNoUnsignedWrap(true);
 
+
     SmallVector<SDValue, 4> Chains(NumValues);
     for (unsigned i = 0; i != NumValues; ++i) {
+      // We shouldn't encounter scalable types here
+      assert(Offsets[i].ScaledBytes == 0 &&
+             "Scalable type in unlowered return");
       SDValue Add = DAG.getNode(ISD::ADD, getCurSDLoc(),
                                 RetPtr.getValueType(), RetPtr,
-                                DAG.getIntPtrConstant(Offsets[i],
+                                DAG.getIntPtrConstant(Offsets[i].UnscaledBytes,
                                                       getCurSDLoc()),
                                 Flags);
       Chains[i] = DAG.getStore(Chain, getCurSDLoc(),
@@ -2594,12 +2611,19 @@ static bool isVectorReductionOp(const User *I) {
           return false;
         if (!isa<UndefValue>(U->getOperand(1)))
           return false;
-        for (unsigned i = 0; i < ElemNumToReduce / 2; ++i)
-          if (ShufInst->getMaskValue(i) != int(i + ElemNumToReduce / 2))
+        int EltIdx = 0;
+        for (unsigned i = 0; i < ElemNumToReduce / 2; ++i) {
+          if (!ShufInst->getMaskValue(i, EltIdx))
             return false;
-        for (unsigned i = ElemNumToReduce / 2; i < ElemNum; ++i)
-          if (ShufInst->getMaskValue(i) != -1)
+          if (EltIdx!= int(i + ElemNumToReduce / 2))
             return false;
+        }
+        for (unsigned i = ElemNumToReduce / 2; i < ElemNum; ++i) {
+          if (!ShufInst->getMaskValue(i, EltIdx))
+            return false;
+          if (EltIdx != -1)
+            return false;
+        }
 
         // There is only one user of this ShuffleVector instruction, which
         // must be a reduction operation.
@@ -3046,17 +3070,78 @@ void SelectionDAGBuilder::visitExtractElement(const User &I) {
 void SelectionDAGBuilder::visitShuffleVector(const User &I) {
   SDValue Src1 = getValue(I.getOperand(0));
   SDValue Src2 = getValue(I.getOperand(1));
+  Value *MaskV = I.getOperand(2);
   SDLoc DL = getCurSDLoc();
-
-  SmallVector<int, 8> Mask;
-  ShuffleVectorInst::getShuffleMask(cast<Constant>(I.getOperand(2)), Mask);
-  unsigned MaskNumElts = Mask.size();
 
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
   EVT VT = TLI.getValueType(DAG.getDataLayout(), I.getType());
+  bool IsScalable = VT.isScalableVector();
   EVT SrcVT = Src1.getValueType();
   unsigned SrcNumElts = SrcVT.getVectorNumElements();
 
+  SmallVector<int, 8> Mask;
+  if (!ShuffleVectorInst::getShuffleMask(MaskV, Mask)) {
+    SDValue Mask = getValue(I.getOperand(2));
+    unsigned NumElts = VT.getVectorNumElements();
+    if (NumElts < SrcNumElts) {
+      // The result is narrower than the source operands.  Create a shuffle
+      // that is as wide as the source operands, filling the trailing mask
+      // elements with 0 (to ensure that the indices are in-range, which
+      // wouldn't be guaranteed if the elements were left undefined).
+      SDValue ZeroIdx = DAG.getConstant(0, DL,
+                                       TLI.getVectorIdxTy(DAG.getDataLayout()));
+      EVT MaskVT = Mask.getValueType();
+      MaskVT = EVT::getVectorVT(*DAG.getContext(),
+                                MaskVT.getVectorElementType(),
+                                SrcNumElts, IsScalable);
+      Mask = DAG.getNode(ISD::INSERT_SUBVECTOR, DL, MaskVT,
+                         DAG.getConstant(0, DL, MaskVT),
+                         Mask, ZeroIdx);
+      SDValue Op = DAG.getNode(ISD::VECTOR_SHUFFLE_VAR, DL, SrcVT,
+                               Src1, Src2, Mask);
+      // Get the low part of the result.
+      Op = DAG.getNode(ISD::EXTRACT_SUBVECTOR, DL, VT, Op, ZeroIdx);
+      setValue(&I, Op);
+      return;
+    }
+    if (NumElts > SrcNumElts) {
+      // The operands are narrower than the result.  Join them together
+      // and pad with undefs to get a vector that has 2*NumElts elements,
+      // then extract the two halves.
+      EVT EltVT = VT.getVectorElementType();
+      SrcVT = EVT::getVectorVT(*DAG.getContext(), EltVT, SrcNumElts * 2,
+                               IsScalable);
+      EVT DoubleVT = EVT::getVectorVT(*DAG.getContext(), EltVT,
+                                      NumElts * 2, IsScalable);
+      EVT IdxVT = TLI.getVectorIdxTy(DAG.getDataLayout());
+      SDValue ZeroIdx = DAG.getConstant(0, DL, IdxVT);
+      SDValue Joined = DAG.getNode(ISD::CONCAT_VECTORS, DL, SrcVT, Src1, Src2);
+      Joined = DAG.getNode(ISD::INSERT_SUBVECTOR, DL, DoubleVT,
+                           DAG.getUNDEF(DoubleVT), Joined, ZeroIdx);
+      Src1 = DAG.getNode(ISD::EXTRACT_SUBVECTOR, DL, VT, Joined, ZeroIdx);
+      Src2 = DAG.getNode(ISD::EXTRACT_SUBVECTOR, DL, VT, Joined,
+                         DAG.getConstant(NumElts, DL, IdxVT));
+    }
+
+    if (auto *CMask = dyn_cast<Constant>(MaskV))
+      if (CMask->isNullValue()) {
+        // Splat of first element.
+        auto FirstElt = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, DL,
+                                    SrcVT.getScalarType(), Src1,
+                                    DAG.getConstant(0, DL,
+                                    TLI.getVectorIdxTy(DAG.getDataLayout())));
+
+        setValue(&I, DAG.getNode(ISD::SPLAT_VECTOR, DL, VT,
+                                 FirstElt));
+        return;
+      }
+
+    setValue(&I, DAG.getNode(ISD::VECTOR_SHUFFLE_VAR, DL, VT,
+                             Src1, Src2, Mask));
+    return;
+  }
+
+  unsigned MaskNumElts = Mask.size();
   if (SrcNumElts == MaskNumElts) {
     setValue(&I, DAG.getVectorShuffle(VT, DL, Src1, Src2, Mask));
     return;
@@ -3335,14 +3420,19 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
   SDValue N = getValue(Op0);
   SDLoc dl = getCurSDLoc();
 
+  bool IsScalable = false;
+  if (auto *VTy = dyn_cast<VectorType>(I.getType()))
+    IsScalable = VTy->isScalable();
+
   // Normalize Vector GEP - all scalar operands should be converted to the
   // splat vector.
   unsigned VectorWidth = I.getType()->isVectorTy() ?
     cast<VectorType>(I.getType())->getVectorNumElements() : 0;
 
   if (VectorWidth && !N.getValueType().isVector()) {
-    LLVMContext &Context = *DAG.getContext();
-    EVT VT = EVT::getVectorVT(Context, N.getValueType(), VectorWidth);
+    EVT NVT = N.getValueType();
+
+    MVT VT = MVT::getVectorVT(NVT.getSimpleVT(), VectorWidth, IsScalable);
     N = DAG.getSplatBuildVector(VT, dl, N);
   }
 
@@ -3355,16 +3445,38 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
         // N = N + Offset
         uint64_t Offset = DL->getStructLayout(StTy)->getElementOffset(Field);
 
+        auto *FTy = StTy->getElementType(Field);
+        auto *VTy = dyn_cast<VectorType>(FTy);
+        const bool Sizeless = VTy && VTy->isScalable();
+
+        // Cannot currently handle both scaled and unscaled offsets; we need
+        // to decide how alignment and packing affect sizeless types.
+        for (auto *Ty : StTy->elements()) {
+          if (auto *VTy = dyn_cast<VectorType>(Ty)) {
+            if (Sizeless)
+              assert(VTy->isScalable() && "Mixed sizeless struct");
+            else
+              assert(!VTy->isScalable() && "Mixed sizeless struct");
+          }
+        }
+
         // In an inbounds GEP with an offset that is nonnegative even when
         // interpreted as signed, assume there is no unsigned overflow.
+        // TODO: Check vs. max size with scaled..
         SDNodeFlags Flags;
         if (int64_t(Offset) >= 0 && cast<GEPOperator>(I).isInBounds())
           Flags.setNoUnsignedWrap(true);
 
-        N = DAG.getNode(ISD::ADD, dl, N.getValueType(), N,
-                        DAG.getConstant(Offset, dl, N.getValueType()), Flags);
+        SDValue Increment;
+        if (Sizeless)
+          Increment = DAG.getVScale(dl, N.getValueType(), Offset);
+        else
+          Increment = DAG.getConstant(Offset, dl, N.getValueType());
+
+        N = DAG.getNode(ISD::ADD, dl, N.getValueType(), N, Increment, Flags);
       }
     } else {
+      const TargetLowering &TLI = DAG.getTargetLoweringInfo();
       MVT PtrTy =
           DAG.getTargetLoweringInfo().getPointerTy(DAG.getDataLayout(), AS);
       unsigned PtrSize = PtrTy.getSizeInBits();
@@ -3377,14 +3489,32 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
           cast<ConstantDataVector>(Idx)->getSplatValue())
         CI = cast<ConstantInt>(cast<ConstantDataVector>(Idx)->getSplatValue());
 
-      if (CI) {
+      if (CI)
         if (CI->isZero())
           continue;
+
+      VectorType *VecTy = dyn_cast<VectorType>(GTI.getIndexedType());
+      if (VecTy && VecTy->isScalable()) {
+        EVT PTy = TLI.getPointerTy(DAG.getDataLayout(), AS);
+
+        // If index is smaller or larger than intptr_t, truncate or extend it.
+        SDValue IdxN = getValue(Idx);
+        IdxN = DAG.getSExtOrTrunc(IdxN, dl, N.getValueType());
+
+        // Calculate the byte offset.
+        SDValue VS = DAG.getVScale(dl, PTy, DL->getTypeAllocSize(VecTy));
+        SDValue OffsVal = DAG.getNode(ISD::MUL, dl, PTy, VS, IdxN);
+
+        N = DAG.getNode(ISD::ADD, dl, N.getValueType(), N, OffsVal);
+        continue;
+      }
+
+      if (CI) {
         APInt Offs = ElementSize * CI->getValue().sextOrTrunc(PtrSize);
-        LLVMContext &Context = *DAG.getContext();
-        SDValue OffsVal = VectorWidth ?
-          DAG.getConstant(Offs, dl, EVT::getVectorVT(Context, PtrTy, VectorWidth)) :
-          DAG.getConstant(Offs, dl, PtrTy);
+        EVT OffsTy = VectorWidth ? EVT::getVectorVT(*DAG.getContext(), PtrTy,
+                                                    {VectorWidth, IsScalable})
+                                 : PtrTy;
+        SDValue OffsVal = DAG.getConstant(Offs, dl, OffsTy);
 
         // In an inbouds GEP with an offset that is nonnegative even when
         // interpreted as signed, assume there is no unsigned overflow.
@@ -3400,7 +3530,7 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
       SDValue IdxN = getValue(Idx);
 
       if (!IdxN.getValueType().isVector() && VectorWidth) {
-        EVT VT = EVT::getVectorVT(*Context, IdxN.getValueType(), VectorWidth);
+        EVT VT = EVT::getVectorVT(*Context, IdxN.getValueType(), VectorWidth, IsScalable);
         IdxN = DAG.getSplatBuildVector(VT, dl, IdxN);
       }
 
@@ -3522,7 +3652,7 @@ void SelectionDAGBuilder::visitLoad(const LoadInst &I) {
   const MDNode *Ranges = I.getMetadata(LLVMContext::MD_range);
 
   SmallVector<EVT, 4> ValueVTs;
-  SmallVector<uint64_t, 4> Offsets;
+  SmallVector<FieldOffsets, 4> Offsets;
   ComputeValueVTs(TLI, DAG.getDataLayout(), Ty, ValueVTs, &Offsets);
   unsigned NumValues = ValueVTs.size();
   if (NumValues == 0)
@@ -3571,10 +3701,19 @@ void SelectionDAGBuilder::visitLoad(const LoadInst &I) {
       Root = Chain;
       ChainI = 0;
     }
+
+    uint64_t ScaledOffset = Offsets[i].ScaledBytes;
+    uint64_t UnscaledOffset = Offsets[i].UnscaledBytes;
+
     SDValue A = DAG.getNode(ISD::ADD, dl,
                             PtrVT, Ptr,
-                            DAG.getConstant(Offsets[i], dl, PtrVT),
-                            Flags);
+                            DAG.getConstant(UnscaledOffset, dl, PtrVT), Flags);
+
+    if (ScaledOffset) {
+      SDValue VS = DAG.getVScale(dl, PtrVT, ScaledOffset);
+      A = DAG.getNode(ISD::ADD, dl, PtrVT, A, VS, Flags);
+    }
+
     auto MMOFlags = MachineMemOperand::MONone;
     if (isVolatile)
       MMOFlags |= MachineMemOperand::MOVolatile;
@@ -3586,9 +3725,10 @@ void SelectionDAGBuilder::visitLoad(const LoadInst &I) {
       MMOFlags |= MachineMemOperand::MODereferenceable;
     MMOFlags |= TLI.getMMOFlags(I);
 
+    // TODO: Do we need to modify MachinePointerInfo for this?
     SDValue L = DAG.getLoad(ValueVTs[i], dl, Root, A,
-                            MachinePointerInfo(SV, Offsets[i]), Alignment,
-                            MMOFlags, AAInfo, Ranges);
+                            MachinePointerInfo(SV, Offsets[i].UnscaledBytes),
+                            Alignment, MMOFlags, AAInfo, Ranges);
 
     Values[i] = L;
     Chains[ChainI] = L.getValue(1);
@@ -3612,12 +3752,12 @@ void SelectionDAGBuilder::visitStoreToSwiftError(const StoreInst &I) {
          "call visitStoreToSwiftError when backend supports swifterror");
 
   SmallVector<EVT, 4> ValueVTs;
-  SmallVector<uint64_t, 4> Offsets;
+  SmallVector<FieldOffsets, 4> Offsets;
   const Value *SrcV = I.getOperand(0);
   ComputeValueVTs(DAG.getTargetLoweringInfo(), DAG.getDataLayout(),
                   SrcV->getType(), ValueVTs, &Offsets);
-  assert(ValueVTs.size() == 1 && Offsets[0] == 0 &&
-         "expect a single EVT for swifterror");
+  assert(ValueVTs.size() == 1 && Offsets[0].UnscaledBytes == 0 &&
+         Offsets[0].ScaledBytes == 0 && "expect a single EVT for swifterror");
 
   SDValue Src = getValue(SrcV);
   // Create a virtual register, then update the virtual register.
@@ -3650,11 +3790,11 @@ void SelectionDAGBuilder::visitLoadFromSwiftError(const LoadInst &I) {
          "load_from_swift_error should not be constant memory");
 
   SmallVector<EVT, 4> ValueVTs;
-  SmallVector<uint64_t, 4> Offsets;
+  SmallVector<FieldOffsets, 4> Offsets;
   ComputeValueVTs(DAG.getTargetLoweringInfo(), DAG.getDataLayout(), Ty,
                   ValueVTs, &Offsets);
-  assert(ValueVTs.size() == 1 && Offsets[0] == 0 &&
-         "expect a single EVT for swifterror");
+  assert(ValueVTs.size() == 1 && Offsets[0].UnscaledBytes == 0 &&
+         Offsets[0].ScaledBytes == 0 && "expect a single EVT for swifterror");
 
   // Chain, DL, Reg, VT, Glue or Chain, DL, Reg, VT
   SDValue L = DAG.getCopyFromReg(
@@ -3688,7 +3828,7 @@ void SelectionDAGBuilder::visitStore(const StoreInst &I) {
   }
 
   SmallVector<EVT, 4> ValueVTs;
-  SmallVector<uint64_t, 4> Offsets;
+  SmallVector<FieldOffsets, 4> Offsets;
   ComputeValueVTs(DAG.getTargetLoweringInfo(), DAG.getDataLayout(),
                   SrcV->getType(), ValueVTs, &Offsets);
   unsigned NumValues = ValueVTs.size();
@@ -3730,11 +3870,23 @@ void SelectionDAGBuilder::visitStore(const StoreInst &I) {
       Root = Chain;
       ChainI = 0;
     }
+
+    uint64_t ScaledOffset = Offsets[i].ScaledBytes;
+    uint64_t UnscaledOffset = Offsets[i].UnscaledBytes;
+
     SDValue Add = DAG.getNode(ISD::ADD, dl, PtrVT, Ptr,
-                              DAG.getConstant(Offsets[i], dl, PtrVT), Flags);
+                              DAG.getConstant(UnscaledOffset, dl, PtrVT),
+                              Flags);
+
+    if (ScaledOffset) {
+      SDValue VS = DAG.getVScale(dl, PtrVT, ScaledOffset);
+      Add = DAG.getNode(ISD::ADD, dl, PtrVT, Add, VS, Flags);
+    }
+
     SDValue St = DAG.getStore(
         Root, dl, SDValue(Src.getNode(), Src.getResNo() + i), Add,
-        MachinePointerInfo(PtrV, Offsets[i]), Alignment, MMOFlags, AAInfo);
+        MachinePointerInfo(PtrV, Offsets[i].UnscaledBytes), Alignment,
+        MMOFlags, AAInfo);
     Chains[ChainI] = St;
   }
 
@@ -3810,13 +3962,42 @@ void SelectionDAGBuilder::visitMaskedStore(const CallInst &I,
 // extract the spalt value and use it as a uniform base.
 // In all other cases the function returns 'false'.
 //
-static bool getUniformBase(const Value* &Ptr, SDValue& Base, SDValue& Index,
-                           SelectionDAGBuilder* SDB) {
+static bool getUniformBase(const Value *&Ptr, SDValue &Base, SDValue &Index,
+                           ISD::MemIndexType &IndexType,
+                           SelectionDAGBuilder *SDB) {
+  assert (Ptr->getType()->isVectorTy() && "Unexpected pointer type");
 
   SelectionDAG& DAG = SDB->DAG;
+
+  // Look through bitcast instruction iff #elements is same
+  uint64_t Scale = 1;
+  if (auto *BitCast = dyn_cast<BitCastInst>(Ptr)) {
+    Type *BCTy = BitCast->getType();
+    Type *BCSrcTy = BitCast->getOperand(0)->getType();
+
+    if (BCTy->getVectorNumElements() == BCSrcTy->getVectorNumElements()) {
+      Type *ResPtrTy =
+          BCTy->getVectorElementType()->getPointerElementType();
+      Type *SrcPtrTy = BCSrcTy->getVectorElementType()->getPointerElementType();
+
+      // Only support this where we need to scale up the stride.
+      // We cannot safely scale down the stride, because if every
+      // gather loads from an overlapping address, this is valid
+      // LLVM IR, but would result in incorrect code.
+      uint64_t SrcSize = SDB->DL->getTypeStoreSize(SrcPtrTy);
+      uint64_t ResSize = SDB->DL->getTypeStoreSize(ResPtrTy);
+      if (SrcSize >= ResSize) {
+        Scale = SrcSize / ResSize;
+        Ptr = BitCast->getOperand(0);
+      }
+    }
+  }
+
+  // %splat = shuffle(..insert(%ptr))
+  // getelementptr %splat, %idx
+  // -> Base  = %ptr, Index = %idx
   LLVMContext &Context = *DAG.getContext();
 
-  assert(Ptr->getType()->isVectorTy() && "Uexpected pointer type");
   const GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(Ptr);
   if (!GEP || GEP->getNumOperands() > 2)
     return false;
@@ -3836,14 +4017,38 @@ static bool getUniformBase(const Value* &Ptr, SDValue& Base, SDValue& Index,
 
   Base = SDB->getValue(Ptr);
   Index = SDB->getValue(IndexVal);
+  IndexType = ISD::SIGNED_SCALED;
 
   // Suppress sign extension.
-  if (SExtInst* Sext = dyn_cast<SExtInst>(IndexVal)) {
+  if (auto *Sext = dyn_cast<SExtInst>(IndexVal)) {
     if (SDB->findValue(Sext->getOperand(0))) {
       IndexVal = Sext->getOperand(0);
       Index = SDB->getValue(IndexVal);
     }
   }
+  // Restrict zero extension to the smallest type that still gets the job done.
+  else if (auto *Zext = dyn_cast<ZExtInst>(IndexVal)) {
+    if (SDB->findValue(Zext->getOperand(0))) {
+      IndexVal = Zext->getOperand(0);
+      Index = SDB->getValue(IndexVal);
+
+      EVT VT = Index.getValueType().widenIntegerVectorElementType(Context);
+      Index = DAG.getNode(ISD::ZERO_EXTEND, SDLoc(Index), VT, Index);
+    }
+  }
+
+  // Scale the index if we're looking through a bitcast,
+  // e.g. to load from <2 x struct.bla*> to <2 x i64*> we
+  // need to have the offsets scaled in i64's.
+  if (Scale > 1) {
+    // e.g. <2 x i64*> to <2 x i32*>
+    SDValue ScaleVal =
+        DAG.getConstant(Scale, SDLoc(Index), Index.getValueType());
+    Index = DAG.getNode(ISD::MUL, SDLoc(Index),
+                        Index.getValueType(), Index, ScaleVal);
+  }
+
+
   if (!Index.getValueType().isVector()) {
     unsigned GEPWidth = GEP->getType()->getVectorNumElements();
     EVT VT = EVT::getVectorVT(Context, Index.getValueType(), GEPWidth);
@@ -3870,8 +4075,9 @@ void SelectionDAGBuilder::visitMaskedScatter(const CallInst &I) {
 
   SDValue Base;
   SDValue Index;
+  ISD::MemIndexType IndexType;
   const Value *BasePtr = Ptr;
-  bool UniformBase = getUniformBase(BasePtr, Base, Index, this);
+  bool UniformBase = getUniformBase(BasePtr, Base, Index, IndexType, this);
 
   const Value *MemOpBasePtr = UniformBase ? BasePtr : nullptr;
   MachineMemOperand *MMO = DAG.getMachineFunction().
@@ -3881,10 +4087,11 @@ void SelectionDAGBuilder::visitMaskedScatter(const CallInst &I) {
   if (!UniformBase) {
     Base = DAG.getTargetConstant(0, sdl, TLI.getPointerTy(DAG.getDataLayout()));
     Index = getValue(Ptr);
+    IndexType = ISD::SIGNED_SCALED;
   }
   SDValue Ops[] = { getRoot(), Src0, Mask, Base, Index };
   SDValue Scatter = DAG.getMaskedScatter(DAG.getVTList(MVT::Other), VT, sdl,
-                                         Ops, MMO);
+                                         Ops, MMO, false, IndexType);
   DAG.setRoot(Scatter);
   setValue(&I, Scatter);
 }
@@ -3941,10 +4148,8 @@ void SelectionDAGBuilder::visitMaskedLoad(const CallInst &I, bool IsExpanding) {
 
   SDValue Load = DAG.getMaskedLoad(VT, sdl, InChain, Ptr, Mask, Src0, VT, MMO,
                                    ISD::NON_EXTLOAD, IsExpanding);
-  if (AddToChain) {
-    SDValue OutChain = Load.getValue(1);
-    DAG.setRoot(OutChain);
-  }
+  if (AddToChain)
+    PendingLoads.push_back(Load.getValue(1));
   setValue(&I, Load);
 }
 
@@ -3969,8 +4174,9 @@ void SelectionDAGBuilder::visitMaskedGather(const CallInst &I) {
   SDValue Root = DAG.getRoot();
   SDValue Base;
   SDValue Index;
+  ISD::MemIndexType IndexType;
   const Value *BasePtr = Ptr;
-  bool UniformBase = getUniformBase(BasePtr, Base, Index, this);
+  bool UniformBase = getUniformBase(BasePtr, Base, Index, IndexType, this);
   bool ConstantMemory = false;
   if (UniformBase &&
       AA && AA->pointsToConstantMemory(MemoryLocation(
@@ -3990,10 +4196,11 @@ void SelectionDAGBuilder::visitMaskedGather(const CallInst &I) {
   if (!UniformBase) {
     Base = DAG.getTargetConstant(0, sdl, TLI.getPointerTy(DAG.getDataLayout()));
     Index = getValue(Ptr);
+    IndexType = ISD::SIGNED_SCALED;
   }
   SDValue Ops[] = { Root, Src0, Mask, Base, Index };
   SDValue Gather = DAG.getMaskedGather(DAG.getVTList(VT, MVT::Other), VT, sdl,
-                                       Ops, MMO);
+                                       Ops, MMO, ISD::NON_EXTLOAD, IndexType);
 
   SDValue OutChain = Gather.getValue(1);
   if (!ConstantMemory)
@@ -4766,12 +4973,12 @@ static unsigned getUnderlyingArgReg(const SDValue &N) {
   }
 }
 
-/// EmitFuncArgumentDbgValue - If the DbgValueInst is a dbg_value of a function
-/// argument, create the corresponding DBG_VALUE machine instruction for it now.
-/// At the end of instruction selection, they will be inserted to the entry BB.
+/// If the DbgValueInst is a dbg_value of a function argument, create the
+/// corresponding DBG_VALUE machine instruction for it now.  At the end of
+/// instruction selection, they will be inserted to the entry BB.
 bool SelectionDAGBuilder::EmitFuncArgumentDbgValue(
     const Value *V, DILocalVariable *Variable, DIExpression *Expr,
-    DILocation *DL, int64_t Offset, bool IsDbgDeclare, const SDValue &N) {
+    DILocation *DL, bool IsDbgDeclare, const SDValue &N) {
   const Argument *Arg = dyn_cast<Argument>(V);
   if (!Arg)
     return false;
@@ -4830,12 +5037,12 @@ bool SelectionDAGBuilder::EmitFuncArgumentDbgValue(
   if (Op->isReg())
     FuncInfo.ArgDbgValues.push_back(
         BuildMI(MF, DL, TII->get(TargetOpcode::DBG_VALUE), IsIndirect,
-                Op->getReg(), Offset, Variable, Expr));
+                Op->getReg(), Variable, Expr));
   else
     FuncInfo.ArgDbgValues.push_back(
         BuildMI(MF, DL, TII->get(TargetOpcode::DBG_VALUE))
             .add(*Op)
-            .addImm(Offset)
+            .addImm(0)
             .addMetadata(Variable)
             .addMetadata(Expr));
 
@@ -4845,18 +5052,18 @@ bool SelectionDAGBuilder::EmitFuncArgumentDbgValue(
 /// Return the appropriate SDDbgValue based on N.
 SDDbgValue *SelectionDAGBuilder::getDbgValue(SDValue N,
                                              DILocalVariable *Variable,
-                                             DIExpression *Expr, int64_t Offset,
+                                             DIExpression *Expr,
                                              const DebugLoc &dl,
                                              unsigned DbgSDNodeOrder) {
   if (auto *FISDN = dyn_cast<FrameIndexSDNode>(N.getNode())) {
     // Construct a FrameIndexDbgValue for FrameIndexSDNodes so we can describe
     // stack slot locations as such instead of as indirectly addressed
     // locations.
-    return DAG.getFrameIndexDbgValue(Variable, Expr, FISDN->getIndex(), 0, dl,
+    return DAG.getFrameIndexDbgValue(Variable, Expr, FISDN->getIndex(), dl,
                                      DbgSDNodeOrder);
   }
-  return DAG.getDbgValue(Variable, Expr, N.getNode(), N.getResNo(), false,
-                         Offset, dl, DbgSDNodeOrder);
+  return DAG.getDbgValue(Variable, Expr, N.getNode(), N.getResNo(), false, dl,
+                         DbgSDNodeOrder);
 }
 
 // VisualStudio defines setjmp as _setjmp
@@ -5125,21 +5332,21 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
       if (isParameter && FINode) {
         // Byval parameter. We have a frame index at this point.
         SDV = DAG.getFrameIndexDbgValue(Variable, Expression,
-                                        FINode->getIndex(), 0, dl, SDNodeOrder);
+                                        FINode->getIndex(), dl, SDNodeOrder);
       } else if (isa<Argument>(Address)) {
         // Address is an argument, so try to emit its dbg value using
         // virtual register info from the FuncInfo.ValueMap.
-        EmitFuncArgumentDbgValue(Address, Variable, Expression, dl, 0, true, N);
+        EmitFuncArgumentDbgValue(Address, Variable, Expression, dl, true, N);
         return nullptr;
       } else {
         SDV = DAG.getDbgValue(Variable, Expression, N.getNode(), N.getResNo(),
-                              true, 0, dl, SDNodeOrder);
+                              true, dl, SDNodeOrder);
       }
       DAG.AddDbgValue(SDV, N.getNode(), isParameter);
     } else {
       // If Address is an argument then try to emit its dbg value using
       // virtual register info from the FuncInfo.ValueMap.
-      if (!EmitFuncArgumentDbgValue(Address, Variable, Expression, dl, 0, true,
+      if (!EmitFuncArgumentDbgValue(Address, Variable, Expression, dl, true,
                                     N)) {
         DEBUG(dbgs() << "Dropping debug info for " << DI << "\n");
       }
@@ -5152,15 +5359,13 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
 
     DILocalVariable *Variable = DI.getVariable();
     DIExpression *Expression = DI.getExpression();
-    uint64_t Offset = DI.getOffset();
     const Value *V = DI.getValue();
     if (!V)
       return nullptr;
 
     SDDbgValue *SDV;
     if (isa<ConstantInt>(V) || isa<ConstantFP>(V) || isa<UndefValue>(V)) {
-      SDV = DAG.getConstantDbgValue(Variable, Expression, V, Offset, dl,
-                                    SDNodeOrder);
+      SDV = DAG.getConstantDbgValue(Variable, Expression, V, dl, SDNodeOrder);
       DAG.AddDbgValue(SDV, nullptr, false);
       return nullptr;
     }
@@ -5171,10 +5376,9 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     if (!N.getNode() && isa<Argument>(V)) // Check unused arguments map.
       N = UnusedArgNodeMap[V];
     if (N.getNode()) {
-      if (EmitFuncArgumentDbgValue(V, Variable, Expression, dl, Offset, false,
-                                   N))
+      if (EmitFuncArgumentDbgValue(V, Variable, Expression, dl, false, N))
         return nullptr;
-      SDV = getDbgValue(N, Variable, Expression, Offset, dl, SDNodeOrder);
+      SDV = getDbgValue(N, Variable, Expression, dl, SDNodeOrder);
       DAG.AddDbgValue(SDV, N.getNode(), false);
       return nullptr;
     }
@@ -7942,23 +8146,26 @@ TargetLowering::LowerCallTo(TargetLowering::CallLoweringInfo &CLI) const {
   CLI.Ins.clear();
   Type *OrigRetTy = CLI.RetTy;
   SmallVector<EVT, 4> RetTys;
-  SmallVector<uint64_t, 4> Offsets;
+  SmallVector<FieldOffsets, 4> Offsets;
   auto &DL = CLI.DAG.getDataLayout();
+
+  // TODO: Handle scaled offsets
   ComputeValueVTs(*this, DL, CLI.RetTy, RetTys, &Offsets);
 
   if (CLI.IsPostTypeLegalization) {
     // If we are lowering a libcall after legalization, split the return type.
     SmallVector<EVT, 4> OldRetTys = std::move(RetTys);
-    SmallVector<uint64_t, 4> OldOffsets = std::move(Offsets);
+    SmallVector<FieldOffsets, 4> OldOffsets = std::move(Offsets);
     for (size_t i = 0, e = OldRetTys.size(); i != e; ++i) {
       EVT RetVT = OldRetTys[i];
-      uint64_t Offset = OldOffsets[i];
+      FieldOffsets Offset = OldOffsets[i];
       MVT RegisterVT = getRegisterType(CLI.RetTy->getContext(), RetVT);
       unsigned NumRegs = getNumRegisters(CLI.RetTy->getContext(), RetVT);
       unsigned RegisterVTSize = RegisterVT.getSizeInBits();
       RetTys.append(NumRegs, RegisterVT);
       for (unsigned j = 0; j != NumRegs; ++j)
-        Offsets.push_back(Offset + j * RegisterVTSize);
+        Offsets.push_back(
+            {Offset.UnscaledBytes + j * RegisterVTSize, Offset.ScaledBytes});
     }
   }
 
@@ -8225,14 +8432,14 @@ TargetLowering::LowerCallTo(TargetLowering::CallLoweringInfo &CLI) const {
     Flags.setNoUnsignedWrap(true);
 
     for (unsigned i = 0; i < NumValues; ++i) {
-      SDValue Add = CLI.DAG.getNode(ISD::ADD, CLI.DL, PtrVT, DemoteStackSlot,
-                                    CLI.DAG.getConstant(Offsets[i], CLI.DL,
-                                                        PtrVT), Flags);
-      SDValue L = CLI.DAG.getLoad(
-          RetTys[i], CLI.DL, CLI.Chain, Add,
-          MachinePointerInfo::getFixedStack(CLI.DAG.getMachineFunction(),
-                                            DemoteStackIdx, Offsets[i]),
-          /* Alignment = */ 1);
+      SDValue Add = CLI.DAG.getNode(
+          ISD::ADD, CLI.DL, PtrVT, DemoteStackSlot,
+          CLI.DAG.getConstant(Offsets[i].UnscaledBytes, CLI.DL, PtrVT), Flags);
+      SDValue L = CLI.DAG.getLoad(RetTys[i], CLI.DL, CLI.Chain, Add,
+                                  MachinePointerInfo::getFixedStack(
+                                      CLI.DAG.getMachineFunction(),
+                                      DemoteStackIdx, Offsets[i].UnscaledBytes),
+                                  /* Alignment = */ 1);
       ReturnValues[i] = L;
       Chains[i] = L.getValue(1);
     }
